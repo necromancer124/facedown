@@ -306,3 +306,51 @@ test('redact stream: a pause in the middle of a secret does not let the first pa
 test('redact: very short values are left alone', () => {
   assert.equal(createRedactor({ PIN: 'abc' }).all('abc abcabc'), 'abc abcabc');
 });
+
+test('export/import: round trip keeps values, notes and allowed sites; the file has no plain value', async () => {
+  const { decryptExport, encryptExport } = await import('../src/transfer.js');
+  const from = Vault.init(tmpProject());
+  from.set('GITHUB_TOKEN', 'ghp-export-test-value-1', { description: 'github api', allow: ['api.github.com'] });
+  from.set('DB_PASSWORD', 'db-export-test-value-2');
+  const text = encryptExport(from.exportEntries(), 'correct horse battery staple');
+  assert.ok(!text.includes('export-test-value'));
+  assert.ok(!text.includes('GITHUB_TOKEN'), 'names are encrypted too');
+  assert.equal(JSON.parse(text).kdf.N, 2 ** 17);
+
+  const to = Vault.init(tmpProject());
+  to.importEntries(decryptExport(text, 'correct horse battery staple'));
+  const reloaded = Vault.open(path.dirname(to.file));
+  assert.notEqual(reloaded.id, from.id, 'a new vault with its own key');
+  assert.deepEqual(reloaded.list(), from.list());
+  assert.deepEqual(reloaded.reveal(), from.reveal());
+  assert.ok(!fs.readFileSync(to.file, 'utf8').includes('export-test-value'));
+});
+
+test('export/import: wrong passphrase, short passphrase, clashes and damaged files write nothing', async () => {
+  const { decryptExport, encryptExport } = await import('../src/transfer.js');
+  const fast = { name: 'scrypt', N: 2 ** 14, r: 8, p: 1 };
+  const from = Vault.init(tmpProject());
+  from.set('SHARED_NAME', 'value-from-export-1');
+  from.set('ONLY_IN_EXPORT', 'value-from-export-2');
+  assert.throws(() => encryptExport(from.exportEntries(), 'too-short'), /at least 12/);
+  const text = encryptExport(from.exportEntries(), 'a long passphrase here', fast);
+
+  assert.throws(() => decryptExport(text, 'a long passphrase HERE'), /wrong passphrase/);
+  assert.throws(() => decryptExport('{"format":"other"}', 'x'), /not a facedown export/);
+  assert.throws(() => decryptExport('not json', 'x'), /not a facedown export/);
+  // Settings from the file are bounded: a huge N would hang or eat memory.
+  const huge = JSON.parse(text);
+  huge.kdf.N = 2 ** 30;
+  assert.throws(() => decryptExport(JSON.stringify(huge), 'a long passphrase here'), /damaged/);
+  const flipped = JSON.parse(text);
+  flipped.data = Buffer.from(Buffer.from(flipped.data, 'base64').map((b, i) => (i === 3 ? b ^ 1 : b))).toString('base64');
+  assert.throws(() => decryptExport(JSON.stringify(flipped), 'a long passphrase here'), /wrong passphrase, or the export file is damaged/);
+
+  // All or nothing: one clashing name and nothing is imported.
+  const to = Vault.init(tmpProject());
+  to.set('SHARED_NAME', 'value-already-here');
+  const before = fs.readFileSync(to.file, 'utf8');
+  assert.throws(() => to.importEntries(decryptExport(text, 'a long passphrase here')), /already has SHARED_NAME\. Nothing was imported/);
+  assert.equal(fs.readFileSync(to.file, 'utf8'), before);
+  assert.equal(Vault.open(path.dirname(to.file)).reveal(['SHARED_NAME']).SHARED_NAME, 'value-already-here');
+});

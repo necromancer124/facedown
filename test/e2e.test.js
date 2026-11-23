@@ -221,6 +221,24 @@ test('cli: without a terminal, run needs --keys or --all-keys and never passes e
   assert.match(cli(['run', '--keys', ',', '--', process.execPath, 'which.js']).stderr, /at least one key name/);
 });
 
+test('cli: export and import only ask the user, never read the passphrase from stdin', () => {
+  // No window and no terminal in the tests: nobody can type a passphrase.
+  let r = cli(['export', 'backup.facedown'], 'a passphrase from stdin\na passphrase from stdin\n');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /Cancelled: there is no window or terminal to ask for the passphrase in/);
+  assert.equal(fs.existsSync(path.join(project, 'backup.facedown')), false, 'nothing written');
+
+  fs.writeFileSync(path.join(project, 'existing.txt'), 'keep me');
+  r = cli(['export', 'existing.txt']);
+  assert.match(r.stderr, /already exists/);
+  assert.equal(fs.readFileSync(path.join(project, 'existing.txt'), 'utf8'), 'keep me');
+
+  r = cli(['import', 'existing.txt']);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /is not a facedown export file/);
+  fs.rmSync(path.join(project, 'existing.txt'));
+});
+
 test('vault file: tells AI agents the rules, and a hand-edited value is rejected', () => {
   const file = path.join(project, '.env.facedown');
   const original = fs.readFileSync(file, 'utf8');

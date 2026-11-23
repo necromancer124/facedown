@@ -319,6 +319,53 @@ export class Vault {
   }
 
   /**
+   * Every entry with its value, for an export. Internal use only: the result
+   * must go straight into encryptExport, never to anything the AI can read.
+   * Throws (and returns nothing) if any value fails to decrypt.
+   */
+  exportEntries() {
+    const values = this.reveal();
+    return [...this.entries.values()].map(({ name, description }) => ({
+      name,
+      description,
+      allow: this.trustedAllow(name),
+      value: values[name],
+    }));
+  }
+
+  /**
+   * Add entries from an export. All or nothing: if any name already exists
+   * here, or anything is invalid, nothing is written.
+   */
+  importEntries(entries) {
+    for (const e of entries) {
+      Vault.check(e?.name, e?.allow ?? []);
+      if (typeof e.value !== 'string' || !e.value) throw new Error(`the export has no value for ${e.name}`);
+    }
+    const names = entries.map((e) => e.name);
+    const dupes = names.filter((n, i) => names.indexOf(n) !== i);
+    if (dupes.length) throw new Error(`the export lists ${dupes[0]} twice; nothing imported`);
+    this._update(() => {
+      const clash = names.filter((n) => this.entries.has(n));
+      if (clash.length) {
+        throw new Error(
+          `this vault already has ${clash.join(', ')}. Nothing was imported. ` +
+            'Remove those keys first (facedown rm NAME), or import into a new folder.'
+        );
+      }
+      for (const e of entries) {
+        const allow = normalizeHosts(e.allow ?? []);
+        this.entries.set(e.name, {
+          name: e.name,
+          sealed: seal(this.key(), this.id, e.name, e.value, allow),
+          description: cleanDescription(e.description),
+          allow,
+        });
+      }
+    });
+  }
+
+  /**
    * Decrypt values. Internal use only: the result must go to a child process
    * or an outgoing request, never to anything the AI can read.
    */

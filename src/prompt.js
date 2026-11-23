@@ -61,6 +61,9 @@ Add-Type -AssemblyName System.Drawing
 $name    = $env:FACEDOWN_PROMPT_NAME
 $details = $env:FACEDOWN_PROMPT_DETAILS
 $timeout = [int]$env:FACEDOWN_PROMPT_TIMEOUT
+$titleText = $env:FACEDOWN_PROMPT_TITLE
+$noteText  = $env:FACEDOWN_PROMPT_NOTE
+$okText    = $env:FACEDOWN_PROMPT_OK
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'facedown'
@@ -76,7 +79,7 @@ $title = New-Object System.Windows.Forms.Label
 $title.Location = New-Object System.Drawing.Point(16, 14)
 $title.Size = New-Object System.Drawing.Size(408, 22)
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
-$title.Text = "Enter the secret value for $name"
+$title.Text = $titleText
 $title.AutoEllipsis = $true
 
 $info = New-Object System.Windows.Forms.Label
@@ -93,10 +96,10 @@ $note = New-Object System.Windows.Forms.Label
 $note.Location = New-Object System.Drawing.Point(16, 132)
 $note.Size = New-Object System.Drawing.Size(408, 20)
 $note.ForeColor = [System.Drawing.SystemColors]::GrayText
-$note.Text = 'It is encrypted on this computer. The AI never sees what you type here.'
+$note.Text = $noteText
 
 $ok = New-Object System.Windows.Forms.Button
-$ok.Text = 'Save'
+$ok.Text = $okText
 $ok.Location = New-Object System.Drawing.Point(254, 170)
 $ok.Size = New-Object System.Drawing.Size(80, 28)
 $ok.DialogResult = [System.Windows.Forms.DialogResult]::OK
@@ -130,8 +133,11 @@ if ($script:timedOut) {
 }
 `;
 
-/** Opens a password window on the user's screen (Windows). */
-export function promptWindow(name, details = '', timeoutSeconds = 300) {
+/**
+ * Opens a password window on the user's screen (Windows). By default it asks
+ * for a secret value; `title`, `note` and `okText` reword it (for a passphrase).
+ */
+export function promptWindow(name, details = '', timeoutSeconds = 300, { title, note, okText } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       'powershell.exe',
@@ -142,6 +148,9 @@ export function promptWindow(name, details = '', timeoutSeconds = 300) {
           FACEDOWN_PROMPT_NAME: name,
           FACEDOWN_PROMPT_DETAILS: details,
           FACEDOWN_PROMPT_TIMEOUT: String(timeoutSeconds),
+          FACEDOWN_PROMPT_TITLE: title ?? `Enter the secret value for ${name}`,
+          FACEDOWN_PROMPT_NOTE: note ?? 'It is encrypted on this computer. The AI never sees what you type here.',
+          FACEDOWN_PROMPT_OK: okText ?? 'Save',
         },
         stdio: ['ignore', 'pipe', 'ignore'],
       }
@@ -318,4 +327,29 @@ export function describeKeyForPrompt({ description, allow, previousAllow = [], r
   );
   if (replacing) lines.push('This replaces the value saved before.');
   return lines.join('\n');
+}
+
+/**
+ * Ask the user for a passphrase (export and import). On Windows this is always
+ * a window, even from a terminal, like the confirmations: a program that types
+ * into a terminal cannot answer it. There is deliberately no stdin or
+ * environment-variable way in: whoever knows the passphrase can open the export.
+ */
+export async function askPassphrase({ title, details, okText, note, again }) {
+  const ask = async (label, button) => {
+    if (canPromptInWindow()) {
+      return promptWindow('', details, 300, {
+        title: label,
+        okText: button,
+        note: note ?? 'The AI never sees what you type here.',
+      });
+    }
+    if (canPromptInTerminal()) return promptTerminal(`${label} (hidden): `);
+    throw new PromptCancelled('there is no window or terminal to ask for the passphrase in');
+  };
+  const first = await ask(title, again ? 'Next' : okText);
+  if (!again) return first;
+  const second = await ask(again, okText);
+  if (first !== second) throw new PromptCancelled('the two passphrases are different, nothing was written');
+  return first;
 }

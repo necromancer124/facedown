@@ -182,6 +182,7 @@ any program it starts would see all your secrets.
 | `facedown run --keys A,B -- cmd` | Run a command with those secrets as environment variables |
 | `facedown allow NAME site…` | Set the allowed sites (adding one asks you first) |
 | `facedown rm NAME` | Delete a secret (asks you first) |
+| `facedown export FILE` / `import FILE` | Move a vault to another computer, with a passphrase |
 | `facedown mcp` | Start the MCP server for AI agents |
 
 ### Debugging: printing a secret is allowed
@@ -224,6 +225,30 @@ facedown allow GITHUB_TOKEN api.github.com
   marked `NEW` there.
 - The list is protected by the encryption: if someone adds a site by editing
   `.env.facedown` by hand, that key stops working instead of being sent there.
+
+### Moving to another computer
+
+A vault only opens on the computer and Windows account that made it. To take
+your secrets along, export them with a passphrase you choose:
+
+```bash
+facedown export backup.facedown
+```
+
+On the new computer, in your project folder:
+
+```bash
+facedown import backup.facedown
+```
+
+- Both commands ask for the passphrase in a window (or with hidden typing in a
+  terminal on Linux and macOS). There is no way to pass it on the command line
+  or through stdin, and no MCP tool for either: only you can export.
+- The export holds every secret, with its note and allowed sites, encrypted
+  with your passphrase (scrypt and AES-256-GCM). **Keep the file safe**: with
+  the passphrase it opens everything in it. Delete it once it is imported.
+- `import` adds to the vault in the current folder, or makes a new one. If a
+  name already exists there, nothing is imported.
 
 ## For other AI agents (MCP server)
 
@@ -285,8 +310,8 @@ Other limits:
   really are short, like a PIN: a short value is easy to spot in output, and
   values under 4 characters are not hidden at all.
   Key names are never masked, even when a value appears inside one.
-- The vault only opens on the computer and account that created it. On a new
-  machine, add the secrets again.
+- The vault only opens on the computer and account that created it. To move
+  it, use `facedown export` and `facedown import`.
 - The windows exist on Windows only. On Linux and macOS use `facedown set
   NAME` in a terminal; those platforms are untested.
 
@@ -312,7 +337,6 @@ test, written as a prompt for an AI session, is in
 
 - Linux and macOS: keychain protection for the key, and the windows
 - `login` tool: fill a username and password into a browser form
-- Move a vault to another computer
 - "This key may only be used by this command" rules for `run_with_secrets`
 
 ## License

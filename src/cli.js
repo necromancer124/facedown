@@ -1,8 +1,11 @@
 #!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
 import { FILE_NAME } from './format.js';
 import { serveMcp } from './mcp.js';
 import {
   PromptCancelled,
+  askPassphrase,
   canPromptInTerminal,
   canPromptInWindow,
   confirmDelete,
@@ -13,6 +16,7 @@ import {
 } from './prompt.js';
 import { MIN_REDACT_LENGTH, describeHits, leakMessage } from './redact.js';
 import { runStreaming } from './run.js';
+import { EXPORT_FORMAT, MIN_PASSPHRASE_LENGTH, decryptExport, encryptExport } from './transfer.js';
 import { MIN_VALUE_LENGTH, Vault } from './vault.js';
 
 const VERSION = '0.1.0';
@@ -47,6 +51,11 @@ Usage:
                                          drops the note). With --strict (or
                                          FACEDOWN_STRICT=1) printing a secret
                                          fails the run with exit code 97.
+  facedown export FILE                  copy every secret into FILE, encrypted with
+                                         a passphrase you choose (to move a vault
+                                         to another computer). Asks in a window.
+  facedown import FILE                  add the secrets from an export to this
+                                         folder's vault (asks for the passphrase)
   facedown mcp                          start the MCP server (for AI agents)
 
 There is no command that prints a secret value, on purpose.
@@ -180,6 +189,80 @@ async function cmdRun(args) {
   }
 }
 
+function namesForWindow(names) {
+  return names.length <= 6 ? names.join(', ') : `${names.slice(0, 6).join(', ')} and ${names.length - 6} more`;
+}
+
+async function cmdExport(args) {
+  const [file, extra] = args;
+  if (!file || extra !== undefined) throw new Error('usage: facedown export FILE');
+  const target = path.resolve(file);
+  if (fs.existsSync(target)) {
+    throw new Error(`${target} already exists. Choose a new file name (an export never overwrites a file).`);
+  }
+  const vault = Vault.open();
+  const names = [...vault.entries.keys()];
+  if (!names.length) throw new Error('the vault is empty, there is nothing to export');
+  vault.reveal(); // fail now, before asking anything, if a value does not decrypt
+
+  if (canPromptInWindow()) console.error('A passphrase window opened on your screen.');
+  const passphrase = await askPassphrase({
+    title: 'Choose a passphrase for the export',
+    again: 'Type the same passphrase again',
+    okText: 'Export',
+    details:
+      `This copies all ${names.length} secrets (${namesForWindow(names)}) into ${path.basename(target)}. ` +
+      `Anyone with that file and this passphrase can read them. At least ${MIN_PASSPHRASE_LENGTH} characters. ` +
+      'If you did not ask for an export, click Cancel.',
+  });
+  if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
+    throw new Error(`the passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters; nothing was written`);
+  }
+  const text = encryptExport(vault.exportEntries(), passphrase);
+  fs.writeFileSync(target, text, { flag: 'wx', mode: 0o600 });
+  console.log(`Exported ${names.length} secret${names.length === 1 ? '' : 's'} to ${target}`);
+  console.log('Keep this file safe: with the passphrase it opens every secret in it.');
+  console.log(`On the other computer: facedown import ${path.basename(target)}`);
+}
+
+async function cmdImport(args) {
+  const [file, extra] = args;
+  if (!file || extra !== undefined) throw new Error('usage: facedown import FILE');
+  const source = path.resolve(file);
+  let text;
+  try {
+    text = fs.readFileSync(source, 'utf8');
+  } catch {
+    throw new Error(`cannot read ${source}`);
+  }
+  let format;
+  try {
+    format = JSON.parse(text)?.format;
+  } catch {
+    // reported below
+  }
+  if (format !== EXPORT_FORMAT) throw new Error(`${source} is not a facedown export file`);
+
+  if (canPromptInWindow()) console.error('A passphrase window opened on your screen.');
+  const passphrase = await askPassphrase({
+    title: `Passphrase for ${path.basename(source)}`,
+    okText: 'Import',
+    details: 'The passphrase chosen when this export was made. The secrets are added to the vault in this folder.',
+  });
+  const entries = decryptExport(text, passphrase);
+  for (const e of entries) Vault.check(e?.name, e?.allow ?? []);
+
+  const existed = Boolean(Vault.find());
+  const vault = Vault.openOrInit();
+  if (!existed) console.error(`Created ${vault.file}`);
+  vault.importEntries(entries);
+  console.log(`Imported ${entries.length} secret${entries.length === 1 ? '' : 's'} into ${vault.file}:`);
+  for (const e of entries) {
+    const hosts = e.allow?.length ? `  [allowed: ${e.allow.join(', ')}]` : '';
+    console.log(`  ${e.name}${hosts}`);
+  }
+}
+
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   switch (command) {
@@ -248,6 +331,12 @@ async function main() {
     }
     case 'run':
       await cmdRun(args);
+      break;
+    case 'export':
+      await cmdExport(args);
+      break;
+    case 'import':
+      await cmdImport(args);
       break;
     case 'mcp':
       await serveMcp();
