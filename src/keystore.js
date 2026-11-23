@@ -77,7 +77,8 @@ export function loadKey(vaultId) {
   if (body === undefined) {
     throw new Error(
       `no key for this vault on this computer (looked in ${file}). ` +
-        'The vault was created somewhere else: add the secrets again here with "facedown set NAME".'
+        'The vault was made on another computer or account. Move it with "facedown export" there and ' +
+        '"facedown import" here, or delete it and add the secrets again with "facedown set NAME".'
     );
   }
   const sep = body.indexOf(':');

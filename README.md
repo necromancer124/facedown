@@ -253,7 +253,7 @@ facedown import backup.facedown
 ## For other AI agents (MCP server)
 
 `facedown mcp` is a standard MCP server, so any agent that speaks MCP can use
-it. Without the plugin, for Claude Code in your project folder:
+it (setup for Cursor, VS Code and Claude Desktop: [docs/CLIENTS.md](docs/CLIENTS.md)). Without the plugin, for Claude Code in your project folder:
 
 ```bash
 claude mcp add facedown -- facedown mcp
@@ -316,6 +316,12 @@ Other limits:
   NAME` in a terminal; those platforms are untested.
 
 Found a security problem? See [SECURITY.md](SECURITY.md).
+
+## More
+
+- [FAQ and troubleshooting](docs/FAQ.md)
+- [Cursor, VS Code, Claude Desktop and other MCP tools](docs/CLIENTS.md)
+- Examples: [Node](examples/node-github) and [Python](examples/python-api)
 
 ## Fun fact
 

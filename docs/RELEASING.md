@@ -15,9 +15,8 @@ proof that it was built from this repository, at the tagged commit.
    - Workflow filename: `release.yml`
    - Environment: `npm`
 
-   npm only lets you do this once the package exists, so the very first
-   `facedown` version has to be published another way (step 2, or once by hand
-   with `npm publish --access public`).
+   The package already exists on npm (0.1.0 was published by hand), so this
+   can be set up right away.
 2. **Or a token.** Create a granular access token on npmjs.com with publish
    rights for `facedown` only, and add it in GitHub → *Settings* → *Secrets and
    variables* → *Actions* as `NPM_TOKEN`. Remove the secret once trusted

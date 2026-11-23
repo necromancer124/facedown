@@ -16,6 +16,9 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
   `.env.facedown`. Commands that find an old-name vault say so once.
 - [docs/STABILITY.md](docs/STABILITY.md): what stays stable from 1.0 on, and a
   test that fails if a command, flag or tool disappears.
+- [docs/FAQ.md](docs/FAQ.md), [docs/CLIENTS.md](docs/CLIENTS.md) (Cursor,
+  VS Code, Claude Desktop) and runnable examples in `examples/` (Node and
+  Python).
 - Releases are published to npm from GitHub Actions with provenance, after the
   tests pass and the tag matches every version (see
   [docs/RELEASING.md](docs/RELEASING.md)).
