@@ -354,3 +354,30 @@ test('export/import: wrong passphrase, short passphrase, clashes and damaged fil
   assert.equal(fs.readFileSync(to.file, 'utf8'), before);
   assert.equal(Vault.open(path.dirname(to.file)).reveal(['SHARED_NAME']).SHARED_NAME, 'value-already-here');
 });
+
+test('redact: two overlapping secrets are both hidden (found by the fuzz test)', () => {
+  // KEY_B ends with the first letters of KEY_A. Printing the start of KEY_B
+  // and then KEY_A used to hide KEY_B and show most of KEY_A.
+  const a = '#%B7~QhR6M:&B9RJ[WP4T2j';
+  const b = 'Ydyo4XN' + a.slice(0, 6);
+  const secrets = { KEY_A: a, KEY_B: b };
+  const out = createRedactor(secrets).all('x ' + b.slice(0, 7) + a + ' y');
+  assert.ok(!out.includes('hR6M'), out);
+  assert.equal(out, 'x ***KEY_B******KEY_A*** y');
+  // Chunk by chunk, the same.
+  const red = createRedactor(secrets);
+  let chunked = '';
+  for (const ch of 'x ' + b.slice(0, 7) + a + ' y') chunked += red.push(ch);
+  assert.equal(chunked + red.flush(), out);
+});
+
+test('redact stream: a hidden secret followed by a prompt is shown while the program waits', async () => {
+  const { createStreamRedactor } = await import('../src/redact.js');
+  const secret = 'sk-live-ABCDEFGH1234';
+  let out = '';
+  const s = createStreamRedactor({ KEY: secret }, (t) => (out += t), 10);
+  s.write(Buffer.from(`using ${secret}\nContinue? `));
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(out, 'using ***KEY***\nContinue? ');
+  s.end();
+});

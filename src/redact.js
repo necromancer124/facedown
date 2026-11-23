@@ -28,12 +28,20 @@ function variants(value) {
   // URL encodings differ between languages and libraries: space as %20 or +,
   // whether !'()*~ are encoded, and upper or lower case hex. Cover the common ones.
   const strict = (s) => s.replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+  // (A value with half an emoji cannot be URL-encoded; those forms are skipped.)
+  const tryForm = (fn) => {
+    try {
+      return [fn()];
+    } catch {
+      return [];
+    }
+  };
   const urlForms = new Set([
-    encodeURIComponent(value), // JavaScript
-    strict(encodeURIComponent(value)), // RFC 3986, PHP rawurlencode
-    strict(encodeURIComponent(value)).replace(/%7E/g, '~'), // Python quote
+    ...tryForm(() => encodeURIComponent(value)), // JavaScript
+    ...tryForm(() => strict(encodeURIComponent(value))), // RFC 3986, PHP rawurlencode
+    ...tryForm(() => strict(encodeURIComponent(value)).replace(/%7E/g, '~')), // Python quote
     new URLSearchParams({ v: value }).toString().slice(2), // HTML forms, URLSearchParams
-    encodeURI(value),
+    ...tryForm(() => encodeURI(value)),
   ]);
   for (const u of [...urlForms]) urlForms.add(u.replace(/%20/g, '+')); // Python quote_plus, PHP urlencode
   for (const u of [...urlForms]) urlForms.add(u.replace(/%[0-9A-F]{2}/g, (h) => h.toLowerCase()));
@@ -63,9 +71,42 @@ export function createRedactor(secrets) {
   let buf = '';
   const hits = {}; // key name -> how many times it was hidden
 
+  // A match is grown while another secret starts inside it and ends after it.
+  // Otherwise two overlapping secrets leak: if B ends with the first letters
+  // of A, printing B's start followed by A would hide B and show most of A.
+  function grow(at, first) {
+    let end = at + first.text.length;
+    const parts = [{ at, p: first }];
+    for (let grown = true; grown; ) {
+      grown = false;
+      for (const p of patterns) {
+        if (p.keep) continue;
+        for (let idx = buf.indexOf(p.text, at + 1); idx !== -1 && idx < end; idx = buf.indexOf(p.text, idx + 1)) {
+          if (idx + p.text.length > end) {
+            end = idx + p.text.length;
+            parts.push({ at: idx, p });
+            grown = true;
+          }
+        }
+      }
+    }
+    return { end, parts };
+  }
+
+  /** Could a secret that starts inside [at, end) continue past the end of buf? */
+  function couldGrow(at, end) {
+    for (let idx = at + 1; idx < end; idx++) {
+      const tail = buf.slice(idx);
+      if (patterns.some((p) => !p.keep && p.text.length > tail.length && p.text.startsWith(tail))) return true;
+    }
+    return false;
+  }
+
   // Redact buf up to `limit`. A match that starts before the limit is always
   // consumed whole. Text after the limit stays in buf, untouched, for later.
-  function drain(limit) {
+  // Unless `final`, a match that could still grow when more output arrives is
+  // left in buf too.
+  function drain(limit, final = false) {
     let out = '';
     let i = 0;
     while (i < limit) {
@@ -83,13 +124,24 @@ export function createRedactor(secrets) {
         i = limit;
         break;
       }
-      if (hit.keep) {
-        out += buf.slice(i, at) + hit.text;
-      } else {
-        out += buf.slice(i, at) + hit.mask;
-        hits[hit.name] = (hits[hit.name] ?? 0) + 1;
+      const { end, parts } = grow(at, hit);
+      if (!final && end + hold > buf.length && couldGrow(at, end)) {
+        // A longer secret could still start inside this match: wait for more.
+        out += buf.slice(i, at);
+        i = at;
+        break;
       }
-      i = at + hit.text.length;
+      out += buf.slice(i, at);
+      const secrets = parts.filter(({ p }) => !p.keep);
+      if (!secrets.length) {
+        out += hit.text; // a key name on its own stays readable
+      } else {
+        for (const { p } of secrets) {
+          out += p.mask;
+          hits[p.name] = (hits[p.name] ?? 0) + 1;
+        }
+      }
+      i = end;
     }
     buf = buf.slice(i);
     return out;
@@ -103,7 +155,7 @@ export function createRedactor(secrets) {
     },
     /** Returns everything still held back. Only for the very end of the output. */
     flush() {
-      return drain(buf.length);
+      return drain(buf.length, true);
     },
     /**
      * For when the program goes quiet: returns what is held back, EXCEPT an
@@ -128,7 +180,7 @@ export function createRedactor(secrets) {
     },
     finish(text) {
       buf += text;
-      return drain(buf.length);
+      return drain(buf.length, true);
     },
     /** Which keys were hidden so far, and how many times. */
     hits() {

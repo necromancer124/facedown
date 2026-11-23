@@ -20,6 +20,12 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
   tests pass and the tag matches every version (see
   [docs/RELEASING.md](docs/RELEASING.md)).
 
+### Fixed
+- Two overlapping secrets could leak: if one secret ends with the first
+  characters of another, printing the start of the first followed by the
+  second hid the first and showed most of the second. Found by the new random
+  stress test (`test/fuzz.test.js`), which runs in CI.
+
 ### Changed
 - **Breaking:** without a terminal (for example when an AI runs it),
   `facedown run` needs `--keys A,B` or `--all-keys` instead of silently passing
