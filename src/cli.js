@@ -18,6 +18,13 @@ import { MIN_REDACT_LENGTH, describeHits, leakMessage } from './redact.js';
 import { runStreaming } from './run.js';
 import { EXPORT_FORMAT, MIN_PASSPHRASE_LENGTH, decryptExport, encryptExport } from './transfer.js';
 import { MIN_VALUE_LENGTH, Vault, withLock } from './vault.js';
+import {
+  blockInsecure,
+  checkForUpdate,
+  insecureBlockMessage,
+  updateCheckEnabled,
+  updateNotice,
+} from './update.js';
 import { VERSION } from './version.js';
 
 const LEAK_EXIT_CODE = 97;
@@ -297,9 +304,35 @@ function cmdMigrate() {
   console.log(`Renamed ${file} to ${FILE_NAME}. Nothing else changes: same secrets, same key.`);
 }
 
+const VAULT_COMMANDS = ['set', 'list', 'ls', 'rm', 'remove', 'allow', 'check', 'run', 'export', 'import'];
+/** Commands that hand secrets to something: these stop under FACEDOWN_BLOCK_INSECURE=1. */
+const SECRET_COMMANDS = ['run', 'export'];
+
+let pendingUpdate = null;
+
+async function startUpdateCheck(command) {
+  if (!VAULT_COMMANDS.includes(command) || !updateCheckEnabled()) return;
+  if (blockInsecure() && SECRET_COMMANDS.includes(command)) {
+    // The answer is needed before anything runs.
+    const info = await checkForUpdate({ timeoutMs: 5000 });
+    if (info?.security) throw new Error(insecureBlockMessage(info));
+    if (!info) console.error('facedown: could not check for security updates (offline?); continuing.');
+    pendingUpdate = Promise.resolve(info);
+    return;
+  }
+  pendingUpdate = checkForUpdate(); // in parallel with the command
+}
+
+async function showUpdateNotice() {
+  if (!pendingUpdate) return;
+  const notice = updateNotice(await pendingUpdate);
+  if (notice) console.error(notice);
+}
+
 async function main() {
   const [command, ...args] = process.argv.slice(2);
-  if (['set', 'list', 'ls', 'rm', 'remove', 'allow', 'check', 'run', 'export', 'import'].includes(command)) legacyHint();
+  if (VAULT_COMMANDS.includes(command)) legacyHint();
+  await startUpdateCheck(command);
   switch (command) {
     case 'init': {
       const vault = Vault.init();
@@ -394,8 +427,10 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  if (err instanceof PromptCancelled) console.error(`Cancelled: ${err.message}.`);
-  else console.error(`facedown: ${err.message}`);
-  process.exitCode = 1;
-});
+main()
+  .catch((err) => {
+    if (err instanceof PromptCancelled) console.error(`Cancelled: ${err.message}.`);
+    else console.error(`facedown: ${err.message}`);
+    process.exitCode = 1;
+  })
+  .finally(showUpdateNotice);

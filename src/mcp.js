@@ -16,6 +16,14 @@ import { LEGACY_FILE_NAME, normalizeHosts } from './format.js';
 import { leakMessage } from './redact.js';
 import { runCaptured } from './run.js';
 import { Vault } from './vault.js';
+import {
+  blockInsecure,
+  cachedUpdate,
+  checkForUpdate,
+  insecureBlockMessage,
+  updateCheckEnabled,
+  updateNotice,
+} from './update.js';
 import { VERSION } from './version.js';
 
 const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -162,18 +170,41 @@ export async function serveMcp() {
     if (vault._key) keyCache.set(vault.id, vault._key);
   }
 
+  // Update check: what the last check found right away, refreshed in the
+  // background (at most once a day; checkForUpdate never rejects).
+  let update = null;
+  const refreshUpdate = () => {
+    if (!updateCheckEnabled()) return;
+    checkForUpdate().then((info) => {
+      if (info) update = info;
+    });
+  };
+  if (updateCheckEnabled()) update = cachedUpdate();
+  refreshUpdate();
+  function updateLine() {
+    const notice = updateNotice(update);
+    if (!notice) return '';
+    return update.security
+      ? `IMPORTANT, tell the user: ${notice.replace(/\n/g, ' ')}\n`
+      : `Tell the user (once): ${notice}\n`;
+  }
+  function checkNotBlocked() {
+    if (blockInsecure() && update?.security) throw new Error(insecureBlockMessage(update));
+  }
+
   const handlers = {
     async list_keys() {
       const { file, createIn } = locate();
       if (!file && !createIn) return NO_PROJECT;
       if (!file) return `There is no vault yet (add_key would create one in ${createIn}).`;
+      refreshUpdate();
       const keys = Vault.load(file).list();
       const legacy =
         path.basename(file) === LEGACY_FILE_NAME
           ? `Note for the user: this vault still has its old name (${LEGACY_FILE_NAME}); "facedown migrate" in a terminal renames it.\n`
           : '';
-      if (!keys.length) return `Vault: ${file}\n${legacy}The vault is empty. Call add_key to add a secret.`;
-      return `Vault: ${file}\n${legacy}` + keys
+      if (!keys.length) return `Vault: ${file}\n${updateLine()}${legacy}The vault is empty. Call add_key to add a secret.`;
+      return `Vault: ${file}\n${updateLine()}${legacy}` + keys
         .map((k) => {
           const allow = k.allow.length ? k.allow.join(', ') : 'none (cannot be used with http_request)';
           return `${k.name}\n  description: ${k.description || '-'}\n  allowed hosts: ${allow}`;
@@ -274,6 +305,7 @@ export async function serveMcp() {
     async run_with_secrets({ command, keys, cwd, timeout_seconds }) {
       if (typeof command !== 'string' || !command.trim()) throw new Error('command is required');
       if (!Array.isArray(keys) || !keys.length) throw new Error('keys must list at least one key name');
+      checkNotBlocked();
       const vault = openVault();
       const secrets = vault.reveal(keys);
       remember(vault);
@@ -291,6 +323,7 @@ export async function serveMcp() {
 
     async http_request(args) {
       if (typeof args.url !== 'string') throw new Error('url is required');
+      checkNotBlocked();
       const vault = openVault();
       const res = await httpRequest(vault, args);
       remember(vault);

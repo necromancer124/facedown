@@ -47,3 +47,22 @@ The workflow runs the tests on Windows (Node 20, 22, 24), then refuses to
 publish if the tag does not match all three versions or the changelog has no
 section for it. After publishing it creates the GitHub release with that
 changelog section as the notes.
+
+## A security fix
+
+1. Release the fix as above (a patch version is fine).
+2. Mark every affected version on npm, with a message that starts with
+   `SECURITY`:
+
+   ```bash
+   npm deprecate facedown@"<X.Y.Z" "SECURITY: short description. Update to X.Y.Z or newer."
+   ```
+
+   facedown's daily update check reads this message: every user of an older
+   version sees a loud warning, and anyone who set `FACEDOWN_BLOCK_INSECURE=1`
+   is stopped until they update. `npm install` shows it too.
+3. Publish a GitHub security advisory (repository → *Security* → *Advisories*)
+   with the affected and fixed versions, so `npm audit` and Dependabot flag it.
+
+Only use `SECURITY` for real security problems: it is the one message
+facedown makes loud.

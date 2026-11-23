@@ -16,7 +16,7 @@ const OTHER = 'second-secret-value';
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'facedown-home-'));
 const project = fs.mkdtempSync(path.join(os.tmpdir(), 'facedown-proj-'));
 // No windows during tests: anything that needs the user's OK is refused.
-const env = { ...process.env, FACEDOWN_HOME: home, FACEDOWN_NO_WINDOW: '1' };
+const env = { ...process.env, FACEDOWN_HOME: home, FACEDOWN_NO_WINDOW: '1', FACEDOWN_NO_UPDATE_CHECK: '1' };
 delete env.FACEDOWN_FILE;
 delete env.FACEDOWN_DIR;
 delete env.CLAUDE_PROJECT_DIR;

@@ -339,6 +339,23 @@ The tests run on every push on Windows with Node 20, 22 and 24. The full manual
 test, written as a prompt for an AI session, is in
 [docs/TEST-PROMPT.md](docs/TEST-PROMPT.md).
 
+## Updates
+
+Once a day facedown asks npm whether there is a newer version, and says so in
+one line after a command (and in `list_keys`, so your AI agent tells you). It
+never updates anything by itself, and when you are offline it says nothing.
+
+- A version with a **known security problem** gets a loud warning: the owner
+  marks it on npm with a message starting with `SECURITY`.
+- `FACEDOWN_BLOCK_INSECURE=1` turns that warning into a hard stop: `run`,
+  `export`, `run_with_secrets` and `http_request` refuse until you update. It is
+  off by default on purpose: a hijacked npm account must not be able to stop
+  everyone, and facedown must keep working offline. If the check cannot reach
+  npm, facedown carries on.
+- `FACEDOWN_NO_UPDATE_CHECK=1` turns the check off (it is also off in CI). The
+  check sends nothing about you or your secrets: it is a plain download of
+  facedown's public package info.
+
 ## Versions
 
 facedown uses [semantic versioning](https://semver.org). What stays stable from

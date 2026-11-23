@@ -19,6 +19,11 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
 - [docs/FAQ.md](docs/FAQ.md), [docs/CLIENTS.md](docs/CLIENTS.md) (Cursor,
   VS Code, Claude Desktop) and runnable examples in `examples/` (Node and
   Python).
+- Update notice: once a day facedown checks npm for a newer version and says
+  so after a command and in `list_keys`. A version marked on npm with a
+  `SECURITY` message gets a loud warning; `FACEDOWN_BLOCK_INSECURE=1` makes it a
+  hard stop for commands that use secrets. `FACEDOWN_NO_UPDATE_CHECK=1` (or CI)
+  turns the check off. Never updates by itself; offline it stays quiet.
 - Releases are published to npm from GitHub Actions with provenance, after the
   tests pass and the tag matches every version (see
   [docs/RELEASING.md](docs/RELEASING.md)).

@@ -14,7 +14,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const CLI = path.join(root, 'src', 'cli.js');
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'facedown-home-'));
 const project = fs.mkdtempSync(path.join(os.tmpdir(), 'facedown-proj-'));
-const env = { ...process.env, FACEDOWN_HOME: home, FACEDOWN_NO_WINDOW: '1' };
+const env = { ...process.env, FACEDOWN_HOME: home, FACEDOWN_NO_WINDOW: '1', FACEDOWN_NO_UPDATE_CHECK: '1' };
 delete env.FACEDOWN_FILE;
 delete env.FACEDOWN_DIR;
 
@@ -103,7 +103,7 @@ test('surface: the documented environment variables are the ones the code reads'
   const src = fs.readdirSync(path.join(root, 'src')).map((f) => read(`src/${f}`)).join('\n');
   // Only the variables a user sets; the window scripts' own variables are internal.
   const used = new Set(
-    [...src.matchAll(/process\.env\.(FACEDOWN_[A-Z_]+)/g)].map((m) => m[1]).concat(read('.claude-plugin/plugin.json').match(/FACEDOWN_[A-Z_]+/g))
+    [...src.matchAll(/\benv\.(FACEDOWN_[A-Z_]+)/g)].map((m) => m[1]).concat(read('.claude-plugin/plugin.json').match(/FACEDOWN_[A-Z_]+/g))
   );
   for (const name of used) assert.ok(documented.has(name), `${name} is read by the code but not in docs/STABILITY.md`);
   for (const name of documented) assert.ok(used.has(name), `${name} is documented but nothing reads it`);

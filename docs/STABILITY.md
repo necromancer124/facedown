@@ -101,5 +101,8 @@ The slash commands `/addKey`, `/keys`, `/removeKey`, `/allowSite` and
 | `FACEDOWN_NO_WINDOW=1` | Never open a window (anything needing approval is refused) |
 | `FACEDOWN_NO_DPAPI=1` | Windows: store the key without DPAPI (tests only) |
 | `FACEDOWN_SKIP_DIR` | Set by the plugin: never use a vault inside this folder |
+| `FACEDOWN_NO_UPDATE_CHECK=1` | Never ask npm for a newer version (also off when `CI` is set) |
+| `FACEDOWN_BLOCK_INSECURE=1` | Refuse to use secrets while this version has a known security problem |
+| `FACEDOWN_UPDATE_URL` | Ask this registry URL instead of `https://registry.npmjs.org/facedown` |
 
 Other `FACEDOWN_*` variables are internal and may change.
