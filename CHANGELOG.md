@@ -12,6 +12,8 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
   computer. The export is encrypted with a passphrase only the user can type
   (in a window, or a terminal on Linux and macOS); there is no MCP tool for it.
 - `facedown run --all-keys` passes every key on purpose.
+- `facedown migrate` renames a vault from before the rename (`.aienv`) to
+  `.env.facedown`. Commands that find an old-name vault say so once.
 - [docs/STABILITY.md](docs/STABILITY.md): what stays stable from 1.0 on, and a
   test that fails if a command, flag or tool disappears.
 - Releases are published to npm from GitHub Actions with provenance, after the

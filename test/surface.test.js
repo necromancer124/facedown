@@ -33,6 +33,7 @@ const COMMANDS = {
   run: ['--keys', '--all-keys', '--strict', '--quiet'],
   export: [],
   import: [],
+  migrate: [],
   mcp: [],
   help: [],
 };

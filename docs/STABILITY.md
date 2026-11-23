@@ -54,6 +54,7 @@ NAME=enc:v2:<base64url>
 | `facedown run -- command` | `--keys`, `--all-keys`, `--strict`, `--quiet` |
 | `facedown export FILE` | |
 | `facedown import FILE` | |
+| `facedown migrate` | |
 | `facedown mcp` | |
 | `facedown help`, `--version` | |
 

@@ -12,7 +12,7 @@ import {
   describeKeyForPrompt,
   promptWindow,
 } from './prompt.js';
-import { normalizeHosts } from './format.js';
+import { LEGACY_FILE_NAME, normalizeHosts } from './format.js';
 import { leakMessage } from './redact.js';
 import { runCaptured } from './run.js';
 import { Vault } from './vault.js';
@@ -168,8 +168,12 @@ export async function serveMcp() {
       if (!file && !createIn) return NO_PROJECT;
       if (!file) return `There is no vault yet (add_key would create one in ${createIn}).`;
       const keys = Vault.load(file).list();
-      if (!keys.length) return `Vault: ${file}\nThe vault is empty. Call add_key to add a secret.`;
-      return `Vault: ${file}\n` + keys
+      const legacy =
+        path.basename(file) === LEGACY_FILE_NAME
+          ? `Note for the user: this vault still has its old name (${LEGACY_FILE_NAME}); "facedown migrate" in a terminal renames it.\n`
+          : '';
+      if (!keys.length) return `Vault: ${file}\n${legacy}The vault is empty. Call add_key to add a secret.`;
+      return `Vault: ${file}\n${legacy}` + keys
         .map((k) => {
           const allow = k.allow.length ? k.allow.join(', ') : 'none (cannot be used with http_request)';
           return `${k.name}\n  description: ${k.description || '-'}\n  allowed hosts: ${allow}`;

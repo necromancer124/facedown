@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-import { FILE_NAME } from './format.js';
+import { FILE_NAME, LEGACY_FILE_NAME } from './format.js';
 import { serveMcp } from './mcp.js';
 import {
   PromptCancelled,
@@ -17,7 +17,7 @@ import {
 import { MIN_REDACT_LENGTH, describeHits, leakMessage } from './redact.js';
 import { runStreaming } from './run.js';
 import { EXPORT_FORMAT, MIN_PASSPHRASE_LENGTH, decryptExport, encryptExport } from './transfer.js';
-import { MIN_VALUE_LENGTH, Vault } from './vault.js';
+import { MIN_VALUE_LENGTH, Vault, withLock } from './vault.js';
 import { VERSION } from './version.js';
 
 const LEAK_EXIT_CODE = 97;
@@ -56,6 +56,8 @@ Usage:
                                          to another computer). Asks in a window.
   facedown import FILE                  add the secrets from an export to this
                                          folder's vault (asks for the passphrase)
+  facedown migrate                      rename an old .aienv vault (from before
+                                         the rename) to ${FILE_NAME}
   facedown mcp                          start the MCP server (for AI agents)
 
 There is no command that prints a secret value, on purpose.
@@ -263,8 +265,41 @@ async function cmdImport(args) {
   }
 }
 
+/** A vault from before the rename keeps working; say once how to rename it. */
+function legacyHint() {
+  if (process.env.FACEDOWN_FILE) return;
+  const file = Vault.find();
+  if (file && path.basename(file) === LEGACY_FILE_NAME) {
+    console.error(`facedown: this vault still has its old name (${LEGACY_FILE_NAME}). Run "facedown migrate" to rename it to ${FILE_NAME}.`);
+  }
+}
+
+function cmdMigrate() {
+  if (process.env.FACEDOWN_FILE) {
+    throw new Error(`FACEDOWN_FILE points at ${process.env.FACEDOWN_FILE}; rename that file yourself`);
+  }
+  const found = Vault.find();
+  if (!found) throw new Error(`no vault here. Create one with "facedown init".`);
+  // find() prefers the new name, so look for the old one next to it too.
+  const file = path.join(path.dirname(found), LEGACY_FILE_NAME);
+  if (!fs.existsSync(file)) {
+    console.log(`Nothing to do: ${found} already has the new name.`);
+    return;
+  }
+  const target = path.join(path.dirname(file), FILE_NAME);
+  withLock(file, () => {
+    if (fs.existsSync(target)) {
+      throw new Error(`both ${LEGACY_FILE_NAME} and ${FILE_NAME} exist in ${path.dirname(file)}. Keep the one you use and delete the other.`);
+    }
+    Vault.load(file); // only rename something that really is a vault
+    fs.renameSync(file, target);
+  });
+  console.log(`Renamed ${file} to ${FILE_NAME}. Nothing else changes: same secrets, same key.`);
+}
+
 async function main() {
   const [command, ...args] = process.argv.slice(2);
+  if (['set', 'list', 'ls', 'rm', 'remove', 'allow', 'check', 'run', 'export', 'import'].includes(command)) legacyHint();
   switch (command) {
     case 'init': {
       const vault = Vault.init();
@@ -337,6 +372,9 @@ async function main() {
       break;
     case 'import':
       await cmdImport(args);
+      break;
+    case 'migrate':
+      cmdMigrate();
       break;
     case 'mcp':
       await serveMcp();

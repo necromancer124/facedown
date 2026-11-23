@@ -103,6 +103,28 @@ test('a vault made before the rename (blind-env, .aienv, ~/.blind-env) still ope
   // The key was copied to the new place.
   const vaultId = /id=([A-Za-z0-9_-]+)/.exec(fs.readFileSync(legacyFile, 'utf8'))[1];
   assert.ok(fs.existsSync(path.join(fakeHome, '.facedown', 'keys', `${vaultId}.key`)));
+
+  // One hint per command, pointing at "facedown migrate".
+  const hints = r.stderr.match(/Run "facedown migrate"/g) ?? [];
+  assert.equal(hints.length, 1, r.stderr);
+
+  // migrate refuses while both names exist, then renames.
+  const newFile = path.join(legacyProject, '.env.facedown');
+  fs.writeFileSync(newFile, 'other');
+  const both = spawnSync(process.execPath, [CLI, 'migrate'], { cwd: legacyProject, env: plainEnv, encoding: 'utf8' });
+  assert.equal(both.status, 1);
+  assert.match(both.stderr, /both \.aienv and \.env\.facedown exist/);
+  fs.rmSync(newFile);
+
+  const m = spawnSync(process.execPath, [CLI, 'migrate'], { cwd: legacyProject, env: plainEnv, encoding: 'utf8' });
+  assert.equal(m.status, 0, m.stderr);
+  assert.ok(fs.existsSync(newFile) && !fs.existsSync(legacyFile));
+  const after = spawnSync(process.execPath, [CLI, 'check'], { cwd: legacyProject, env: plainEnv, encoding: 'utf8' });
+  assert.equal(after.status, 0, after.stderr);
+  assert.match(after.stdout, /OLD_KEY\s+ok/);
+  assert.doesNotMatch(after.stderr, /migrate/);
+  const again = spawnSync(process.execPath, [CLI, 'migrate'], { cwd: legacyProject, env: plainEnv, encoding: 'utf8' });
+  assert.match(again.stdout, /Nothing to do/);
 });
 
 test('cli: a short value is refused unless --allow-short is given', () => {
