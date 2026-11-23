@@ -18,8 +18,8 @@ import { MIN_REDACT_LENGTH, describeHits, leakMessage } from './redact.js';
 import { runStreaming } from './run.js';
 import { EXPORT_FORMAT, MIN_PASSPHRASE_LENGTH, decryptExport, encryptExport } from './transfer.js';
 import { MIN_VALUE_LENGTH, Vault } from './vault.js';
+import { VERSION } from './version.js';
 
-const VERSION = '0.1.0';
 const LEAK_EXIT_CODE = 97;
 
 const HELP = `facedown ${VERSION} - a .env file for AI agents

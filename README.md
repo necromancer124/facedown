@@ -333,6 +333,13 @@ The tests run on every push on Windows with Node 20, 22 and 24. The full manual
 test, written as a prompt for an AI session, is in
 [docs/TEST-PROMPT.md](docs/TEST-PROMPT.md).
 
+## Versions
+
+facedown uses [semantic versioning](https://semver.org). What stays stable from
+1.0 on (the vault format, commands, flags, MCP tools and environment variables)
+is in [docs/STABILITY.md](docs/STABILITY.md); every change is in
+[CHANGELOG.md](CHANGELOG.md).
+
 ## Roadmap
 
 - Linux and macOS: keychain protection for the key, and the windows

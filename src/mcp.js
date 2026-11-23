@@ -16,6 +16,7 @@ import { normalizeHosts } from './format.js';
 import { leakMessage } from './redact.js';
 import { runCaptured } from './run.js';
 import { Vault } from './vault.js';
+import { VERSION } from './version.js';
 
 const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
@@ -26,7 +27,7 @@ const INSTRUCTIONS =
   'placeholders. To add a secret, call add_key: the user types the value into a private window. ' +
   'Never ask the user to paste a secret into the chat, and never try to print, decode or read a secret value.';
 
-const TOOLS = [
+export const TOOLS = [
   {
     name: 'list_keys',
     description:
@@ -313,7 +314,7 @@ export async function serveMcp() {
         return reply({
           protocolVersion: PROTOCOL_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSIONS[0],
           capabilities: { tools: {} },
-          serverInfo: { name: 'facedown', version: '0.1.0' },
+          serverInfo: { name: 'facedown', version: VERSION },
           instructions: INSTRUCTIONS,
         });
       }
