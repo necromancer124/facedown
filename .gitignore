@@ -3,3 +3,5 @@ node_modules/
 .env.facedown
 # the vault file name from before the rename
 .aienv
+.env.facedown.lock
+*.lock.stale-*

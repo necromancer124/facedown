@@ -134,6 +134,71 @@ test('password window text points out newly added sites', async () => {
   assert.ok(!/NEW/.test(describeKeyForPrompt({ allow: ['a.com'], previousAllow: ['a.com'], replacing: true })));
 });
 
+test('vault: two processes saving at the same time never lose a change', async () => {
+  const { spawn } = await import('node:child_process');
+  const { pathToFileURL } = await import('node:url');
+  const dir = tmpProject();
+  Vault.init(dir).set('EXISTING', 'existing-value-123');
+
+  // Each writer is a separate process that saves 40 keys of its own as fast
+  // as it can, while the other one does the same.
+  const writer = path.join(dir, 'writer.mjs');
+  fs.writeFileSync(
+    writer,
+    `const { Vault } = await import(${JSON.stringify(pathToFileURL(path.resolve('src/vault.js')).href)});
+const [dir, prefix] = process.argv.slice(2);
+const vault = Vault.open(dir);
+for (let i = 0; i < 40; i++) vault.set(prefix + i, 'value-for-' + prefix + i);
+if (vault.has('EXISTING')) vault.setAllow('EXISTING', ['host-' + prefix.toLowerCase().replace(/_/g, '') + '.test']);
+`
+  );
+  const run = (prefix) =>
+    new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [writer, dir, prefix], { env: process.env, stdio: ['ignore', 'ignore', 'pipe'] });
+      let err = '';
+      child.stderr.on('data', (d) => (err += d));
+      child.on('error', reject);
+      child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`writer ${prefix} failed: ${err}`))));
+    });
+  await Promise.all([run('A_'), run('B_')]);
+
+  const vault = Vault.open(dir);
+  for (const prefix of ['A_', 'B_']) {
+    for (let i = 0; i < 40; i++) assert.ok(vault.has(prefix + i), `${prefix}${i} was lost`);
+  }
+  assert.equal(vault.reveal(['EXISTING']).EXISTING, 'existing-value-123');
+  assert.equal(vault.reveal(['B_39']).B_39, 'value-for-B_39');
+  assert.equal(fs.existsSync(vault.file + '.lock'), false, 'the lock file is removed after saving');
+});
+
+test('vault: a lock left behind by a crashed process is cleaned up', () => {
+  const dir = tmpProject();
+  const vault = Vault.init(dir);
+  const lock = vault.file + '.lock';
+  // A process id that is not running.
+  let dead = 4_000_000;
+  for (;;) {
+    try {
+      process.kill(dead, 0);
+      dead++;
+    } catch (err) {
+      if (err.code === 'ESRCH') break;
+      dead++;
+    }
+  }
+  fs.writeFileSync(lock, `${dead}\n`);
+  vault.set('AFTER_CRASH', 'saved-after-crash');
+  assert.ok(Vault.open(dir).has('AFTER_CRASH'));
+  assert.equal(fs.existsSync(lock), false);
+
+  // An old lock with no readable owner counts as stale too.
+  fs.writeFileSync(lock, '');
+  const old = new Date(Date.now() - 60_000);
+  fs.utimesSync(lock, old, old);
+  vault.remove('AFTER_CRASH');
+  assert.equal(Vault.open(dir).has('AFTER_CRASH'), false);
+});
+
 test('vault: found from a sub-folder', () => {
   const dir = tmpProject();
   Vault.init(dir);

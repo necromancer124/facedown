@@ -19,6 +19,105 @@ import { loadKey, saveKey } from './keystore.js';
  */
 export const MIN_VALUE_LENGTH = 8;
 
+// Saving is read-modify-write. The MCP server and the CLI can both save at the
+// same moment (add_key waiting on its window while "facedown set" runs in a
+// terminal), so every change takes a lock file next to the vault, re-reads the
+// vault from disk, applies only its own change, and writes it back.
+const LOCK_WAIT_MS = 10_000;
+/** A lock older than this is from a crashed process (a save takes milliseconds). */
+const STALE_LOCK_MS = 30_000;
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM';
+  }
+}
+
+/** Remove a lock left behind by a crashed process. True if it was removed. */
+function clearStaleLock(lock) {
+  let stat, owner;
+  try {
+    stat = fs.statSync(lock);
+    owner = Number.parseInt(fs.readFileSync(lock, 'utf8'), 10);
+  } catch {
+    return false; // gone already, or being written right now
+  }
+  const age = Date.now() - stat.mtimeMs;
+  const dead = Number.isInteger(owner) && owner > 0 && owner !== process.pid && !processAlive(owner);
+  if (!dead && age < STALE_LOCK_MS) return false;
+  // Move it aside first, so two processes cleaning up at once cannot both
+  // delete: only one rename succeeds.
+  const aside = `${lock}.stale-${process.pid}`;
+  try {
+    fs.renameSync(lock, aside);
+    fs.unlinkSync(aside);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function withLock(file, fn) {
+  const lock = `${file}.lock`;
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    let fd;
+    try {
+      fd = fs.openSync(lock, 'wx');
+    } catch (err) {
+      // EPERM: on Windows a lock that is being deleted cannot be opened yet.
+      if (err.code !== 'EEXIST' && err.code !== 'EPERM') throw err;
+      if (clearStaleLock(lock)) continue;
+      if (Date.now() > deadline) {
+        throw new Error(
+          `the vault is busy: another facedown is saving it (${lock}). ` +
+            'Try again. If no other facedown is running, delete that file.'
+        );
+      }
+      sleepSync(10 + Math.random() * 30);
+      continue;
+    }
+    try {
+      fs.writeSync(fd, `${process.pid}\n`);
+      fs.closeSync(fd);
+      return fn();
+    } finally {
+      try {
+        fs.unlinkSync(lock);
+      } catch {
+        // already gone
+      }
+    }
+  }
+}
+
+/** Windows refuses to replace a file another process has open for a moment. */
+function replaceFile(tmp, file) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(tmp, file);
+      return;
+    } catch (err) {
+      if (!['EPERM', 'EACCES', 'EBUSY'].includes(err.code) || attempt >= 50) {
+        try {
+          fs.unlinkSync(tmp);
+        } catch {
+          // nothing to clean up
+        }
+        throw err;
+      }
+      sleepSync(20);
+    }
+  }
+}
+
 export class Vault {
   constructor(file, data) {
     this.file = file;
@@ -62,14 +161,26 @@ export class Vault {
     if (fs.existsSync(file)) throw new Error(`${file} already exists`);
     const vault = new Vault(file, { id: newVaultId(), entries: new Map() });
     vault._key = newMasterKey();
-    saveKey(vault.id, vault._key);
-    vault.save();
+    withLock(file, () => {
+      // Someone else may have created it while we were starting.
+      if (fs.existsSync(file)) throw Object.assign(new Error(`${file} already exists`), { code: 'VAULT_EXISTS' });
+      saveKey(vault.id, vault._key);
+      vault.save();
+    });
     return vault;
   }
 
   static openOrInit(startDir = process.cwd()) {
     const file = Vault.find(startDir);
-    return file ? Vault.load(file) : Vault.init(startDir);
+    if (file) return Vault.load(file);
+    try {
+      return Vault.init(startDir);
+    } catch (err) {
+      // Created by another facedown at the same moment: use that one.
+      const now = Vault.find(startDir);
+      if (err.code === 'VAULT_EXISTS' && now) return Vault.load(now);
+      throw err;
+    }
   }
 
   key() {
@@ -77,10 +188,29 @@ export class Vault {
     return this._key;
   }
 
+  /** Write the vault as it is in memory. Callers hold the lock. */
   save() {
     const tmp = `${this.file}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, serializeVault(this));
-    fs.renameSync(tmp, this.file);
+    replaceFile(tmp, this.file);
+  }
+
+  /**
+   * Apply one change safely: take the lock, reload the entries from disk (so
+   * changes saved by another process meanwhile are kept), apply, write.
+   */
+  _update(change) {
+    this.key(); // unlock first: on Windows that can take a second
+    return withLock(this.file, () => {
+      if (fs.existsSync(this.file)) {
+        const disk = parseVault(fs.readFileSync(this.file, 'utf8'));
+        if (disk.id !== this.id) throw new Error(`${this.file} was replaced by a different vault; nothing saved`);
+        this.entries = disk.entries;
+      }
+      const result = change();
+      this.save();
+      return result;
+    });
   }
 
   has(name) {
@@ -119,22 +249,24 @@ export class Vault {
       err.code = 'SHORT_VALUE';
       throw err;
     }
-    const old = this.entries.get(name);
-    // A legacy (v1) entry's hosts were never protected, so they are not carried over.
-    const keptAllow = old && !isLegacy(old.sealed) ? old.allow : [];
-    const finalAllow = allow !== undefined ? normalizeHosts(allow) : keptAllow;
-    this.entries.set(name, {
-      name,
-      sealed: seal(this.key(), this.id, name, value, finalAllow),
-      description: description !== undefined ? cleanDescription(description) : old?.description ?? '',
-      allow: finalAllow,
+    this._update(() => {
+      const old = this.entries.get(name);
+      // A legacy (v1) entry's hosts were never protected, so they are not carried over.
+      const keptAllow = old && !isLegacy(old.sealed) ? old.allow : [];
+      const finalAllow = allow !== undefined ? normalizeHosts(allow) : keptAllow;
+      this.entries.set(name, {
+        name,
+        sealed: seal(this.key(), this.id, name, value, finalAllow),
+        description: description !== undefined ? cleanDescription(description) : old?.description ?? '',
+        allow: finalAllow,
+      });
     });
-    this.save();
   }
 
   remove(name) {
-    if (!this.entries.delete(name)) throw new Error(`no key named ${name}`);
-    this.save();
+    this._update(() => {
+      if (!this.entries.delete(name)) throw new Error(`no key named ${name}`);
+    });
   }
 
   /**
@@ -143,12 +275,14 @@ export class Vault {
    * Callers must get the user's confirmation before ADDING a host.
    */
   setAllow(name, hosts) {
-    const entry = this.entries.get(name);
-    if (!entry) throw new Error(`no key named ${name}`);
-    const value = this.reveal([name])[name];
-    entry.allow = normalizeHosts(hosts);
-    entry.sealed = seal(this.key(), this.id, name, value, entry.allow);
-    this.save();
+    const allow = normalizeHosts(hosts);
+    this._update(() => {
+      const entry = this.entries.get(name);
+      if (!entry) throw new Error(`no key named ${name}`);
+      const value = this.reveal([name])[name];
+      entry.allow = allow;
+      entry.sealed = seal(this.key(), this.id, name, value, entry.allow);
+    });
   }
 
   /**
