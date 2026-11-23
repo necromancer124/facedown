@@ -1,0 +1,67 @@
+name: release
+
+# Pushing a version tag (v1.2.3) runs the tests, then publishes to npm with
+# provenance (the npm page shows it was built here, from this commit) and
+# creates the GitHub release with the notes from CHANGELOG.md.
+# How to make a release: docs/RELEASING.md.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Tests, Windows, Node ${{ matrix.node }}
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm test
+
+  publish:
+    name: Publish to npm
+    needs: test
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: write # create the GitHub release
+      id-token: write # npm trusted publishing and provenance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing (no stored token) needs npm 11.5.1 or newer.
+      - run: npm install -g npm@^11.5.1
+
+      - name: Check the tag, versions and changelog
+        run: node scripts/release-check.mjs "$GITHUB_REF_NAME" release-notes.md
+
+      - name: Check what goes into the package
+        run: npm pack --dry-run
+
+      - name: Publish
+        # With trusted publishing set up on npmjs.com, no token is needed.
+        # Otherwise the NPM_TOKEN repository secret is used.
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: GitHub release
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}

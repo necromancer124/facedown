@@ -107,3 +107,14 @@ test('surface: the documented environment variables are the ones the code reads'
   for (const name of used) assert.ok(documented.has(name), `${name} is read by the code but not in docs/STABILITY.md`);
   for (const name of documented) assert.ok(used.has(name), `${name} is documented but nothing reads it`);
 });
+
+test('release check: the tag must match every version and have changelog notes', async () => {
+  const { releaseNotes } = await import('../scripts/release-check.mjs');
+  const { version } = JSON.parse(read('package.json'));
+  const ok = releaseNotes(`v${version}`);
+  assert.deepEqual(ok.problems, []);
+  assert.ok(ok.notes.length > 20);
+  assert.match(releaseNotes('v99.0.0').problems.join('\n'), /package\.json says .*the tag says 99\.0\.0/);
+  assert.match(releaseNotes('v99.0.0').problems.join('\n'), /no "## \[99\.0\.0\]" section/);
+  assert.match(releaseNotes('1.0.0').problems[0], /not a version tag/);
+});

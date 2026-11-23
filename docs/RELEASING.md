@@ -1,0 +1,50 @@
+# Making a release
+
+Releases are published to npm by GitHub Actions
+([`.github/workflows/release.yml`](../.github/workflows/release.yml)), never
+from a laptop. That way every version on npm carries a **provenance** badge:
+proof that it was built from this repository, at the tagged commit.
+
+## One-time setup (owner)
+
+1. **Trusted publishing (recommended, no token to leak).** On npmjs.com open
+   the `facedown` package → *Settings* → *Trusted publishing* → *GitHub
+   Actions*, and enter:
+   - Organization or user: `necromancer124`
+   - Repository: `facedown`
+   - Workflow filename: `release.yml`
+   - Environment: `npm`
+
+   npm only lets you do this once the package exists, so the very first
+   `facedown` version has to be published another way (step 2, or once by hand
+   with `npm publish --access public`).
+2. **Or a token.** Create a granular access token on npmjs.com with publish
+   rights for `facedown` only, and add it in GitHub → *Settings* → *Secrets and
+   variables* → *Actions* as `NPM_TOKEN`. Remove the secret once trusted
+   publishing works.
+3. In GitHub → *Settings* → *Environments*, create an environment called `npm`.
+   Optionally add yourself as a required reviewer, so every publish waits for
+   your click.
+
+## Every release
+
+1. Pick the version (`MAJOR.MINOR.PATCH`, see [STABILITY.md](STABILITY.md)).
+2. Set it in three places (the tests fail if they differ):
+   - `package.json` → `version`
+   - `.claude-plugin/plugin.json` → `version`
+   - `.claude-plugin/marketplace.json` → `plugins[0].version`
+3. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and
+   start a new empty `## [Unreleased]` above it.
+4. Run `npm test`, commit, then tag and push:
+
+   ```bash
+   git tag vX.Y.Z
+   ```
+   ```bash
+   git push origin main vX.Y.Z
+   ```
+
+The workflow runs the tests on Windows (Node 20, 22, 24), then refuses to
+publish if the tag does not match all three versions or the changelog has no
+section for it. After publishing it creates the GitHub release with that
+changelog section as the notes.

@@ -14,6 +14,9 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
 - `facedown run --all-keys` passes every key on purpose.
 - [docs/STABILITY.md](docs/STABILITY.md): what stays stable from 1.0 on, and a
   test that fails if a command, flag or tool disappears.
+- Releases are published to npm from GitHub Actions with provenance, after the
+  tests pass and the tag matches every version (see
+  [docs/RELEASING.md](docs/RELEASING.md)).
 
 ### Changed
 - **Breaking:** without a terminal (for example when an AI runs it),
