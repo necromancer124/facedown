@@ -77,7 +77,7 @@ export function serializeVault(vault) {
     `# facedown vault v1 id=${vault.id}`,
     '# Names and notes are readable. Values are encrypted; the key is NOT in this folder.',
     '# Edit with the facedown tool, not by hand.',
-    '# AI agents: use these keys by NAME ("facedown run -- <command>" or the facedown tools).',
+    '# AI agents: use these keys by NAME ("facedown run --keys NAME -- <command>" or the facedown tools).',
     '# Never print, log, decode or copy a value, and never ask the user to paste one in chat.',
   ];
   for (const e of vault.entries.values()) {

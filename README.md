@@ -159,9 +159,19 @@ password window opens instead.
 facedown run -- node app.js
 ```
 
-`app.js` reads `process.env.GITHUB_TOKEN` as usual. Add `--keys A,B` to pass
-only some keys. Your code can be in any language: it is just an environment
-variable.
+`app.js` reads `process.env.GITHUB_TOKEN` as usual. Your code can be in any
+language: it is just an environment variable.
+
+In your own terminal, leaving out `--keys` passes every key. Without a terminal
+(which is how an AI agent runs commands) `run` asks for the keys by name, so a
+program only ever gets the secrets it needs:
+
+```bash
+facedown run --keys GITHUB_TOKEN -- node app.js
+```
+
+`--all-keys` passes every key on purpose. Avoid it when an AI runs the command:
+any program it starts would see all your secrets.
 
 | Command | What it does |
 |---|---|
@@ -169,7 +179,7 @@ variable.
 | `facedown set NAME` | Add or replace a secret (`--desc`, `--allow`, `--stdin`) |
 | `facedown list` | Names, notes and allowed sites (`--json`) |
 | `facedown check` | Confirms each secret decrypts; shows length and a fingerprint |
-| `facedown run -- cmd` | Run a command with the secrets as environment variables |
+| `facedown run --keys A,B -- cmd` | Run a command with those secrets as environment variables |
 | `facedown allow NAME site…` | Set the allowed sites (adding one asks you first) |
 | `facedown rm NAME` | Delete a secret (asks you first) |
 | `facedown mcp` | Start the MCP server for AI agents |

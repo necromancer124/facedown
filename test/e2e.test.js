@@ -144,7 +144,7 @@ test('cli: a secret printed in two parts with a pause is still hidden', () => {
   const code =
     'const v = process.env.API_KEY; process.stdout.write(v.slice(0, 11));' +
     ' setTimeout(() => console.log(v.slice(11)), 300);';
-  const r = cli(['run', '--', process.execPath, '-e', code]);
+  const r = cli(['run', '--keys', 'API_KEY', '--', process.execPath, '-e', code]);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout.trim(), '***API_KEY***');
   assert.ok(!r.stdout.includes(SECRET.slice(0, 11)));
@@ -157,27 +157,27 @@ test('cli: --strict turns a printed secret into a failed run; clean programs are
     "console.log('key is set: ' + Boolean(process.env.API_KEY) + ', length ' + process.env.API_KEY.length);\n"
   );
 
-  let r = cli(['run', '--strict', '--', process.execPath, 'leak.js']);
+  let r = cli(['run', '--keys', 'API_KEY', '--strict', '--', process.execPath, 'leak.js']);
   assert.equal(r.status, 97, r.stderr);
   assert.match(r.stdout, /token is \*\*\*API_KEY\*\*\*/);
   assert.match(r.stderr, /ERROR: the command printed the value of API_KEY \(1x\)/);
   assert.ok(!(r.stdout + r.stderr).includes(SECRET));
 
-  r = spawnSync(process.execPath, [CLI, 'run', '--', process.execPath, 'leak.js'], {
+  r = spawnSync(process.execPath, [CLI, 'run', '--keys', 'API_KEY', '--', process.execPath, 'leak.js'], {
     cwd: project,
     env: { ...env, FACEDOWN_STRICT: '1' },
     encoding: 'utf8',
   });
   assert.equal(r.status, 97, r.stderr);
 
-  r = cli(['run', '--strict', '--', process.execPath, 'clean.js']);
+  r = cli(['run', '--keys', 'API_KEY', '--strict', '--', process.execPath, 'clean.js']);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout.trim(), `key is set: true, length ${SECRET.length}`);
   assert.equal(r.stderr, '');
 });
 
 test('cli: --quiet drops the note; check shows length and fingerprint, never the value', () => {
-  let r = cli(['run', '--quiet', '--', process.execPath, 'leak.js']);
+  let r = cli(['run', '--keys', 'API_KEY', '--quiet', '--', process.execPath, 'leak.js']);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /token is \*\*\*API_KEY\*\*\*/);
   assert.equal(r.stderr, '');
@@ -200,6 +200,27 @@ test('cli: run with a key that does not exist fails before starting anything', (
   assert.equal(r.stdout, '');
 });
 
+test('cli: without a terminal, run needs --keys or --all-keys and never passes every key silently', () => {
+  // The tests have no terminal, like an AI running the command.
+  fs.writeFileSync(path.join(project, 'which.js'), "console.log(['API_KEY', 'OTHER_KEY'].filter((k) => process.env[k]).join(','));\n");
+  let r = cli(['run', '--', process.execPath, 'which.js']);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /say which keys the program needs, like --keys A,B \(keys in this vault: API_KEY, OTHER_KEY/);
+  assert.match(r.stderr, /--all-keys/);
+  assert.equal(r.stdout, '', 'the program did not start');
+
+  r = cli(['run', '--keys', 'OTHER_KEY', '--', process.execPath, 'which.js']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), 'OTHER_KEY');
+
+  r = cli(['run', '--all-keys', '--', process.execPath, 'which.js']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), 'API_KEY,OTHER_KEY');
+
+  assert.match(cli(['run', '--keys', 'API_KEY', '--all-keys', '--', process.execPath, 'which.js']).stderr, /either --keys or --all-keys/);
+  assert.match(cli(['run', '--keys', ',', '--', process.execPath, 'which.js']).stderr, /at least one key name/);
+});
+
 test('vault file: tells AI agents the rules, and a hand-edited value is rejected', () => {
   const file = path.join(project, '.env.facedown');
   const original = fs.readFileSync(file, 'utf8');
@@ -209,7 +230,7 @@ test('vault file: tells AI agents the rules, and a hand-edited value is rejected
   const a = /^API_KEY=(.*)$/m.exec(original)[1];
   const b = /^OTHER_KEY=(.*)$/m.exec(original)[1];
   fs.writeFileSync(file, original.replace(a, 'TEMP').replace(b, a).replace('TEMP', b));
-  const r = cli(['run', '--', process.execPath, 'clean.js']);
+  const r = cli(['run', '--all-keys', '--', process.execPath, 'clean.js']);
   fs.writeFileSync(file, original);
   assert.equal(r.status, 1);
   assert.match(r.stderr, /cannot decrypt/);

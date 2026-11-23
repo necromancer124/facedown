@@ -36,8 +36,11 @@ Usage:
   facedown allow NAME --clear           allow no hosts
   facedown check [NAME...]              test that secrets decrypt; shows length
                                          and a fingerprint, never the value
-  facedown run [--keys A,B] [--strict] [--quiet] -- command
+  facedown run --keys A,B [--strict] [--quiet] -- command
                                          run a command with secrets as env vars.
+                                         --keys can be left out in a terminal
+                                         (every key is passed); otherwise use
+                                         --all-keys to pass every key on purpose.
                                          Printing a secret is fine for logs: the
                                          output shows ***NAME*** instead of the
                                          value, plus a one-line note (--quiet
@@ -144,12 +147,25 @@ async function cmdRun(args) {
   const options = args.slice(0, split);
   const argv = args.slice(split + 1);
   const keysText = takeOption(options, '--keys');
+  const allKeys = takeFlag(options, '--all-keys');
   const strict = takeFlag(options, '--strict') || process.env.FACEDOWN_STRICT === '1';
   const quiet = takeFlag(options, '--quiet');
   if (options.length) throw new Error(`unknown option ${options[0]}`);
+  if (keysText !== undefined && allKeys) throw new Error('use either --keys or --all-keys, not both');
 
   const vault = Vault.open();
-  const secrets = vault.reveal(keysText ? keysText.split(',').filter(Boolean) : undefined);
+  const names = keysText !== undefined ? keysText.split(',').map((k) => k.trim()).filter(Boolean) : undefined;
+  if (keysText !== undefined && !names.length) throw new Error('--keys needs at least one key name');
+  // Without a terminal (usually an AI running the command), the program must
+  // only get the keys it needs: no silent "every secret".
+  if (!names && !allKeys && vault.entries.size && !canPromptInTerminal()) {
+    throw new Error(
+      'say which keys the program needs, like --keys A,B ' +
+        `(keys in this vault: ${[...vault.entries.keys()].join(', ')}). ` +
+        'To give it every key on purpose, use --all-keys.'
+    );
+  }
+  const secrets = vault.reveal(names);
   const { code, leaks } = await runStreaming(argv, secrets);
   process.exitCode = code;
   const message = leakMessage(leaks);
