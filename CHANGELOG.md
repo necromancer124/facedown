@@ -7,16 +7,6 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
 
 ## [Unreleased]
 
-### Fixed
-- `run_with_secrets` could show a secret when a program wrote it to stdout in
-  two parts with a line on stderr in between, or when a non-ASCII character in
-  the secret was cut between two pieces of output. stdout and stderr are now
-  cleaned separately, each with its own decoder.
-
-### Changed
-- The update notice in `list_keys` is quoted as text from npm, so an agent
-  treats it as data, not instructions.
-
 ## [0.2.0] - 2026-11-24
 
 ### Added
@@ -45,6 +35,10 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
   characters of another, printing the start of the first followed by the
   second hid the first and showed most of the second. Found by the new random
   stress test (`test/fuzz.test.js`), which runs in CI.
+- `run_with_secrets` could show a secret when a program wrote it to stdout in
+  two parts with a line on stderr in between, or when a non-ASCII character in
+  the secret was cut between two pieces of output. stdout and stderr are now
+  cleaned separately, each with its own decoder.
 
 ### Changed
 - **Breaking:** without a terminal (for example when an AI runs it),
@@ -52,6 +46,8 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
   every secret. In your own terminal it works as before.
 - Saving takes a lock file (`.env.facedown.lock`) and re-reads the vault first,
   so the MCP server and the CLI saving at the same moment never lose a change.
+- The update notice in `list_keys` is quoted as text from npm, so an agent
+  treats it as data, not instructions.
 
 ## [0.1.0] - 2026-11-10
 
