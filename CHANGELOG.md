@@ -7,6 +7,16 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
 
 ## [Unreleased]
 
+### Fixed
+- `run_with_secrets` could show a secret when a program wrote it to stdout in
+  two parts with a line on stderr in between, or when a non-ASCII character in
+  the secret was cut between two pieces of output. stdout and stderr are now
+  cleaned separately, each with its own decoder.
+
+### Changed
+- The update notice in `list_keys` is quoted as text from npm, so an agent
+  treats it as data, not instructions.
+
 ## [0.2.0] - 2026-11-24
 
 ### Added

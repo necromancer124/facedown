@@ -381,3 +381,43 @@ test('redact stream: a hidden secret followed by a prompt is shown while the pro
   assert.equal(out, 'using ***KEY***\nContinue? ');
   s.end();
 });
+
+test('run_with_secrets output: stderr between two parts of a secret, and a character cut between chunks', async () => {
+  const { runCaptured } = await import('../src/run.js');
+  const secret = 'sk-live-ABCDEFGH-12345678';
+  const unicode = 'pässwörd-שלום-éèê-12345';
+  const node = JSON.stringify(process.execPath);
+
+  // stdout, then a line on stderr, then the rest on stdout.
+  let r = await runCaptured(
+    `${node} -e "const v=process.env.K;process.stdout.write(v.slice(0,12));setTimeout(()=>{console.error('note');setTimeout(()=>console.log(v.slice(12)),100)},100)"`,
+    { K: secret }
+  );
+  assert.ok(!/ABCD|EFGH|1234/.test(r.output), r.output);
+  assert.match(r.output, /\*\*\*K\*\*\*/);
+  assert.match(r.output, /note/);
+
+  // The 'ä' (two bytes) is cut between two writes.
+  r = await runCaptured(
+    `${node} -e "const b=Buffer.from(process.env.U);process.stdout.write(b.subarray(0,2));setTimeout(()=>process.stdout.write(b.subarray(2)),100)"`,
+    { U: unicode }
+  );
+  assert.equal(r.output, '***U***');
+});
+
+test('run_with_secrets output: cut off at the size limit never shows the start of a secret', async () => {
+  const { runCaptured } = await import('../src/run.js');
+  // A long secret and a short mask: the hidden output is much shorter than
+  // what the program printed, so the cut-off point could land in what is shown.
+  const secret = 'x'.repeat(10) + 'LONGSECRET'.repeat(9);
+  const node = JSON.stringify(process.execPath);
+  for (const offset of [0, 7, 33, 61]) {
+    const r = await runCaptured(
+      `${node} -e "process.stdout.write('-'.repeat(${offset}) + process.env.K.repeat(40))"`,
+      { K: secret },
+      { maxChars: 200 }
+    );
+    assert.equal(r.truncated, true);
+    assert.ok(!r.output.includes('LONGSECRETLONG'), `offset ${offset}: ${r.output}`);
+  }
+});

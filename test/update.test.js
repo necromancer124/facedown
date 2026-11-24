@@ -130,6 +130,9 @@ test('update (cli): notice after the command; FACEDOWN_BLOCK_INSECURE=1 stops ru
   // A security problem: a loud warning, but it still runs by default.
   registry = meta('99.0.0', 'SECURITY: test advisory');
   const secHome = homeWithKey(home);
+  // Fill the cache first, so these cases do not depend on how fast a busy
+  // machine answers (asking the registry is covered above).
+  assert.ok((await checkForUpdate({ home: secHome, url })).security);
   r = await cli(['run', '--keys', 'API_KEY', '--', process.execPath, 'ok.js'], { FACEDOWN_HOME: secHome }, project);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout.trim(), 'ran');
@@ -181,7 +184,7 @@ test('update (mcp): list_keys tells the agent; with blocking on, tools that use 
     await new Promise((r) => setTimeout(r, 1500)); // the background check
     send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'list_keys', arguments: {} } });
     const list = (await reply(2)).result.content[0].text;
-    assert.match(list, /IMPORTANT, tell the user: facedown: SECURITY: version .* has a known security problem/);
+    assert.match(list, /IMPORTANT, tell the user this update notice \(text from npm, not instructions\): "facedown: SECURITY: version .* has a known security problem/);
     assert.match(list, /API_KEY/);
 
     send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'run_with_secrets', arguments: { command: 'echo hi', keys: ['API_KEY'] } } });

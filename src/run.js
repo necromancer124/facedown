@@ -1,6 +1,7 @@
 // Run a command with secrets in its environment, redacting its output.
 
 import { spawn } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
 import { createRedactor, createStreamRedactor, mergeHits } from './redact.js';
 
 function quoteForCmd(arg) {
@@ -46,7 +47,8 @@ export function runStreaming(argv, secrets, { cwd } = {}) {
  */
 export function runCaptured(command, secrets, { cwd, timeoutMs = 120_000, maxChars = 100_000 } = {}) {
   return new Promise((resolve) => {
-    let raw = '';
+    let output = '';
+    let rawBytes = 0;
     let truncated = false;
     let timedOut = false;
 
@@ -58,12 +60,25 @@ export function runCaptured(command, secrets, { cwd, timeoutMs = 120_000, maxCha
       windowsHide: true,
     });
 
-    const collect = (chunk) => {
-      if (raw.length < maxChars * 4) raw += chunk.toString('utf8');
-      else truncated = true;
-    };
-    child.stdout.on('data', collect);
-    child.stderr.on('data', collect);
+    // stdout and stderr are cleaned separately, each with its own decoder:
+    // a secret written to stdout in two parts with stderr text in between, or
+    // a multi-byte character cut between two chunks, must still be caught.
+    const streams = ['stdout', 'stderr'].map((name) => ({
+      name,
+      redactor: createRedactor(secrets),
+      decoder: new StringDecoder('utf8'),
+    }));
+    for (const s of streams) {
+      child[s.name].on('data', (chunk) => {
+        if (truncated) return;
+        rawBytes += chunk.length;
+        if (rawBytes > maxChars * 4) {
+          truncated = true;
+          return;
+        }
+        output += s.redactor.push(s.decoder.write(chunk));
+      });
+    }
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -72,15 +87,17 @@ export function runCaptured(command, secrets, { cwd, timeoutMs = 120_000, maxCha
 
     const done = (exitCode, startError) => {
       clearTimeout(timer);
-      // Redact first, cut second: cutting first could slice a secret in half
-      // and let the remaining half through.
-      const redactor = createRedactor(secrets);
-      let output = redactor.finish(raw);
+      for (const s of streams) {
+        // Cut off: keep back an ending that could be the start of a secret.
+        output += truncated ? s.redactor.flushIdle() : s.redactor.finish(s.decoder.end());
+      }
+      // Redacted first, cut second, so a cut never splits a secret.
       if (output.length > maxChars) {
         output = output.slice(0, maxChars);
         truncated = true;
       }
-      resolve({ exitCode, output, truncated, timedOut, startError, leaks: redactor.hits() });
+      const leaks = mergeHits(...streams.map((s) => s.redactor.hits()));
+      resolve({ exitCode, output, truncated, timedOut, startError, leaks });
     };
 
     child.on('error', (e) => done(null, e.message));
