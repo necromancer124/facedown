@@ -9,6 +9,8 @@
   <img src="https://img.shields.io/badge/platform-Windows%20(Linux%20%26%20macOS%20planned)-0078d4" alt="Windows for now">
   <img src="https://img.shields.io/badge/dependencies-0-0d9488" alt="no dependencies">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/necromancer124/facedown?color=64748b" alt="MIT license"></a>
+  <a href="https://registry.modelcontextprotocol.io/v0/servers/io.github.necromancer124%2Ffacedown/versions/latest"><img src="https://img.shields.io/badge/MCP%20Registry-listed-7c3aed" alt="Listed in the official MCP Registry"></a>
+  <a href="https://glama.ai/mcp/servers/necromancer124/facedown"><img src="https://img.shields.io/badge/Glama-MCP%20server-f97316" alt="facedown MCP server on Glama"></a>
 </p>
 
 AI coding agents read your project files. If your `.env` holds passwords and
