@@ -1,0 +1,35 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.necromancer124/facedown",
+  "title": "facedown",
+  "description": "A .env file for AI agents: use secrets by name in commands and web requests, never see the values.",
+  "repository": {
+    "url": "https://github.com/necromancer124/facedown",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/necromancer124/facedown#readme",
+  "version": "0.2.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "facedown",
+      "version": "0.2.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "FACEDOWN_DIR",
+          "description": "Your project folder, where the .env.facedown vault lives. Set it when the client does not start the server in that folder.",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

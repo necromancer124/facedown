@@ -23,6 +23,8 @@ export function releaseNotes(tag) {
     'package.json': JSON.parse(read('package.json')).version,
     '.claude-plugin/plugin.json': JSON.parse(read('.claude-plugin/plugin.json')).version,
     '.claude-plugin/marketplace.json': JSON.parse(read('.claude-plugin/marketplace.json')).plugins[0].version,
+    'server.json': JSON.parse(read('server.json')).version,
+    'server.json (npm package)': JSON.parse(read('server.json')).packages[0].version,
   };
   for (const [file, v] of Object.entries(versions)) {
     if (v !== version) problems.push(`${file} says ${v}, the tag says ${version}`);

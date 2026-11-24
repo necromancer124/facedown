@@ -95,6 +95,10 @@ test('surface: one version everywhere (package.json, plugin, marketplace, change
   const { version } = JSON.parse(read('package.json'));
   assert.equal(JSON.parse(read('.claude-plugin/plugin.json')).version, version, 'plugin.json version');
   assert.equal(JSON.parse(read('.claude-plugin/marketplace.json')).plugins[0].version, version, 'marketplace.json version');
+  const server = JSON.parse(read('server.json'));
+  assert.equal(server.version, version, 'server.json version');
+  assert.equal(server.packages[0].version, version, 'server.json package version');
+  assert.equal(server.name, JSON.parse(read('package.json')).mcpName, 'server.json name must equal mcpName in package.json');
   assert.match(read('CHANGELOG.md'), new RegExp(`^## \\[${version.replace(/\./g, '\\.')}\\]`, 'm'), `CHANGELOG.md has no ${version} section`);
 });
 

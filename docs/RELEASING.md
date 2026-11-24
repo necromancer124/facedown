@@ -28,10 +28,11 @@ proof that it was built from this repository, at the tagged commit.
 ## Every release
 
 1. Pick the version (`MAJOR.MINOR.PATCH`, see [STABILITY.md](STABILITY.md)).
-2. Set it in three places (the tests fail if they differ):
+2. Set it in these places (the tests fail if they differ):
    - `package.json` → `version`
    - `.claude-plugin/plugin.json` → `version`
    - `.claude-plugin/marketplace.json` → `plugins[0].version`
+   - `server.json` → `version` and `packages[0].version` (the MCP Registry listing)
 3. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and
    start a new empty `## [Unreleased]` above it.
 4. Run `npm test`, commit, then tag and push:

@@ -7,6 +7,18 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-24
+
+### Added
+- Listed in the official MCP Registry as `io.github.necromancer124/facedown`
+  (`server.json`, and `mcpName` in `package.json`). Each release now updates the
+  listing from GitHub Actions.
+
+### Changed
+- [docs/CLIENTS.md](docs/CLIENTS.md): on Windows the snippets use
+  `cmd /c npx`, because `npx` alone cannot be started by tools that start
+  servers without a shell.
+
 ## [0.2.0] - 2026-11-24
 
 ### Added
