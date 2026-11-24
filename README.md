@@ -315,7 +315,15 @@ Other limits:
 - The windows exist on Windows only. On Linux and macOS use `facedown set
   NAME` in a terminal; those platforms are untested.
 
-Found a security problem? See [SECURITY.md](SECURITY.md).
+Found a security problem? See [SECURITY.md](SECURITY.md). Think you can get a
+secret out anyway? [Try to break it](docs/CHALLENGE.md).
+
+## Hall of fame
+
+People who found a real security problem in facedown and reported it
+privately. Thank you.
+
+*No one yet. [Be the first](docs/CHALLENGE.md).*
 
 ## More
 
