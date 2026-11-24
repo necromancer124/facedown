@@ -34,7 +34,7 @@ Claude:  ▶ http_request  Authorization: Bearer {{GITHUB_TOKEN}}
 **Why "facedown"?** Like a card played face down: it counts in the game, but
 nobody at the table sees what it is. The AI plays your secrets face down.
 
-> **Status: v0.1 preview. Windows for now; Linux and macOS are planned.**
+> **Status: v0.2 preview. Windows for now; Linux and macOS are planned.**
 > Needs Node 20 or newer, no other dependencies.
 
 ## How it works

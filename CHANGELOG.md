@@ -7,6 +7,8 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-24
+
 ### Added
 - `facedown export FILE` and `facedown import FILE` move a vault to another
   computer. The export is encrypted with a passphrase only the user can type
@@ -60,5 +62,5 @@ First preview, Windows first.
 
 ### Changed
 - Renamed from **blind-env** to **facedown**. Vaults made by blind-env
-  (`.aienv`, `~/.blind-env`) keep working. The first release was published to
-  npm as `blind-env@0.1.0`.
+  (`.aienv`, `~/.blind-env`) keep working. 0.1.0 is on npm both as
+  `blind-env@0.1.0` and `facedown@0.1.0`.
