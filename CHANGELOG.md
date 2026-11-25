@@ -7,6 +7,8 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-25
+
 ### Added
 - `facedown import .env` moves the keys of a plain `.env` file into the
   vault (never printing a value) and offers to delete the plain-text file.

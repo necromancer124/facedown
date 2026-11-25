@@ -1,6 +1,6 @@
 {
   "name": "facedown",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "mcpName": "io.github.necromancer124/facedown",
   "description": "A .env file for AI agents: they can use secrets by name but never see the values.",
   "keywords": [
