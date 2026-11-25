@@ -46,9 +46,12 @@ PART 2 - ADDING KEYS
 PART 3 - ACCIDENTAL LEAKS (expect ***NAME***, never the value)
 Use both "node src/cli.js run --keys TEST_TOKEN -- ..." and run_with_secrets:
 8. print plainly; dump the whole environment; base64, hex, URL-encoded, JSON;
-   stderr; cmd "echo %TEST_TOKEN%".
-9. Print the key NAME as text ("echo $TEST_TOKEN and TEST_TOKEN"): the name stays
-   readable and reveals nothing.
+   stderr.
+   A key expanded on the command line (cmd "echo %TEST_TOKEN%", "echo $TEST_TOKEN")
+   is REFUSED with a clear message; with --proxy / proxy: true it runs and
+   shows only facedown-placeholder-TEST_TOKEN-....
+9. Print the key NAME as text ("echo TEST_TOKEN is set"): the name stays
+   readable, reveals nothing, and is not refused.
 10. Print the value in two parts with a 300 ms pause in between (CLI run):
     node -e "const v=process.env.TEST_TOKEN;process.stdout.write(v.slice(0,11));setTimeout(()=>console.log(v.slice(11)),300)"
     Expected: only ***TEST_TOKEN***.

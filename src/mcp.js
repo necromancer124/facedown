@@ -15,7 +15,7 @@ import {
 import { LEGACY_FILE_NAME, normalizeHosts } from './format.js';
 import { leakMessage } from './redact.js';
 import { describeUse, startSecretProxy } from './proxy.js';
-import { runCaptured } from './run.js';
+import { findKeyExpansions, keyOnCommandLineMessage, runCaptured } from './run.js';
 import { Vault } from './vault.js';
 import {
   blockInsecure,
@@ -66,8 +66,12 @@ export const TOOLS = [
     name: 'run_with_secrets',
     description:
       'Run a shell command with the named secrets set as environment variables (same names as the keys). ' +
-      `The command runs in ${process.platform === 'win32' ? 'cmd.exe, so read a variable as %NAME% (not $NAME)' : '/bin/sh, so read a variable as $NAME'}; ` +
-      'it is often easier to read it inside a script (process.env.NAME, os.environ["NAME"]). ' +
+      `The command runs in ${process.platform === 'win32' ? 'cmd.exe' : '/bin/sh'}. ` +
+      'Read a key inside the program (process.env.NAME, os.environ["NAME"]): expanding it in the command itself ' +
+      `(${process.platform === 'win32' ? '%NAME%' : '$NAME'}) is refused, because that puts the real value on a command line ` +
+      'where other programs can read it. For web APIs prefer http_request. ' +
+      'The command gets the real value and only its OUTPUT is cleaned: a program that writes the key to a file or sends ' +
+      'it somewhere is not stopped (with proxy: true it only ever has a placeholder). ' +
       "Runs in the vault folder unless cwd is given. The command also inherits this app's own environment " +
       'variables (not facedown secrets, so they are NOT hidden): do not print the whole environment. ' +
       'Returns the exit code and output; secret values in the output are replaced with ***NAME***.',
@@ -318,6 +322,12 @@ export async function serveMcp() {
       if (typeof command !== 'string' || !command.trim()) throw new Error('command is required');
       if (!Array.isArray(keys) || !keys.length) throw new Error('keys must list at least one key name');
       checkNotBlocked();
+      // A key expanded onto a command line is visible to other programs (#19).
+      // With proxy: true the command line only ever holds a placeholder.
+      if (useProxy !== true) {
+        const hits = findKeyExpansions(command, keys);
+        if (hits.length) throw new Error(keyOnCommandLineMessage(hits, { tool: true }));
+      }
       const vault = openVault();
       const secrets = vault.reveal(keys);
       remember(vault);

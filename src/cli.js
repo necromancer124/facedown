@@ -16,7 +16,7 @@ import {
 } from './prompt.js';
 import { MIN_REDACT_LENGTH, describeHits, leakMessage } from './redact.js';
 import { describeUse, startSecretProxy } from './proxy.js';
-import { runStreaming } from './run.js';
+import { findKeyExpansions, keyOnCommandLineMessage, runStreaming } from './run.js';
 import { EXPORT_FORMAT, MIN_PASSPHRASE_LENGTH, decryptExport, encryptExport } from './transfer.js';
 import { MIN_VALUE_LENGTH, Vault, withLock } from './vault.js';
 import {
@@ -187,6 +187,12 @@ async function cmdRun(args) {
         `(keys in this vault: ${[...vault.entries.keys()].join(', ')}). ` +
         'To give it every key on purpose, use --all-keys.'
     );
+  }
+  // A key expanded onto a command line is visible to other programs (#19).
+  // With --proxy the command line only ever holds a placeholder.
+  if (!useProxy) {
+    const hits = findKeyExpansions(argv.join(' '), names ?? [...vault.entries.keys()]);
+    if (hits.length) throw new Error(keyOnCommandLineMessage(hits));
   }
   const secrets = vault.reveal(names);
   let proxy = null;

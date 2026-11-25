@@ -63,12 +63,16 @@ key on purpose. In your own terminal, leaving out `--keys` still passes all.
 
 ## Using it
 
-### `echo $NAME` prints nothing in `run_with_secrets`
+### Why is `echo %NAME%` (or `$NAME`) refused?
 
-On Windows `run_with_secrets` runs the command in `cmd.exe`, where a variable is
-`%NAME%`, not `$NAME`. It is usually easier to read the variable in your code
-(`process.env.NAME`, `os.environ["NAME"]`). Printing it shows `***NAME***`
-anyway.
+Expanding a key in the command itself puts the real value on a command line,
+for example `curl -H "Authorization: Bearer %TOKEN%"`. Other programs on the
+same computer can read any process's command line (Task Manager, `ps`), and
+facedown can't hide it there, so `run` and `run_with_secrets` refuse it. Read
+the key inside your program instead (`process.env.NAME`, `os.environ["NAME"]`),
+use `http_request` for web APIs, or add `--proxy` (`proxy: true`): then the
+command line only gets a placeholder. Mentioning the name as text
+(`echo TOKEN is set`) is fine.
 
 ### Why are short values refused?
 

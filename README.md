@@ -39,6 +39,12 @@ nobody at the table sees what it is. The AI plays your secrets face down.
 > **Status: v0.3 preview. Windows for now; Linux and macOS are planned.**
 > Needs Node 20 or newer, no other dependencies.
 
+> **What 1.0 promises:** facedown stops keys leaking *by accident*: into the
+> chat, logs, transcripts or a program's output. It does not stop an agent or
+> program that is deliberately trying to steal a key (see
+> [what it protects, and what it does not](#what-it-protects-and-what-it-does-not));
+> `--proxy` goes further for web APIs.
+
 ## How it works
 
 <p align="center">
@@ -174,6 +180,17 @@ facedown run --keys GITHUB_TOKEN -- node app.js
 
 `--all-keys` passes every key on purpose. Avoid it when an AI runs the command:
 any program it starts would see all your secrets.
+
+Read keys inside your program, not in the command itself: `run` refuses a
+command that would expand a key onto a command line (`%GITHUB_TOKEN%`,
+`$GITHUB_TOKEN`), because other programs on the computer can read a process's
+command line and facedown can't hide it there. With `--proxy` it's allowed,
+since the command line then only gets a placeholder.
+
+Only a program's *output* is cleaned. The program itself gets the real value,
+so if it writes the key to a file or sends it somewhere, facedown doesn't stop
+that; run only programs you'd trust with the key. (A test shows this limit with
+a fake token. With `--proxy`, the program only ever has a placeholder.)
 
 | Command | What it does |
 |---|---|

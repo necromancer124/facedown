@@ -222,6 +222,38 @@ test('cli: run with a key that does not exist fails before starting anything', (
   assert.equal(r.stdout, '');
 });
 
+test('cli: a key expanded onto a command line is refused, unless --proxy is on (#19)', () => {
+  const shell = process.platform === 'win32' ? ['cmd', '/c', 'echo %API_KEY%'] : ['sh', '-c', 'echo $API_KEY'];
+  let r = cli(['run', '--keys', 'API_KEY', '--', ...shell]);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /refused: the command would put API_KEY .* on a command line/);
+  assert.match(r.stderr, /add --proxy/);
+  assert.equal(r.stdout, '', 'nothing ran');
+  // With --proxy the command line only gets the placeholder.
+  r = cli(['run', '--proxy', '--quiet', '--keys', 'API_KEY', '--', ...shell]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout.trim(), /^facedown-placeholder-API_KEY-[0-9a-f]{12}$/);
+  // Naming a key as text is fine.
+  r = cli(['run', '--keys', 'API_KEY', '--', process.execPath, '-e', "console.log('API_KEY is set')"]);
+  assert.equal(r.status, 0, r.stderr);
+});
+
+test('cli: the boundary, shown with a fake token: only OUTPUT is cleaned, not files (#18)', () => {
+  // Suggested by u/sparkignitefire: make the limit concrete instead of implied.
+  // The program gets the real value; if it writes it to a file, the file has it.
+  const file = path.join(project, 'written-by-program.txt');
+  const write = `require('fs').writeFileSync(${JSON.stringify(file)}, process.env.API_KEY); console.log('wrote it: ' + process.env.API_KEY)`;
+  let r = cli(['run', '--keys', 'API_KEY', '--', process.execPath, '-e', write]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), 'wrote it: ***API_KEY***', 'the output is cleaned');
+  assert.equal(fs.readFileSync(file, 'utf8'), SECRET, 'but the file holds the real value: facedown does not stop that');
+  // With --proxy the program never has the real value, so the file only gets the placeholder.
+  r = cli(['run', '--proxy', '--keys', 'API_KEY', '--', process.execPath, '-e', write]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(fs.readFileSync(file, 'utf8'), /^facedown-placeholder-API_KEY-/);
+  fs.rmSync(file);
+});
+
 test('cli: run --proxy gives the program a placeholder and a proxy, never the value', () => {
   const code =
     "console.log(JSON.stringify({ key: process.env.API_KEY, proxy: process.env.HTTPS_PROXY, ca: Boolean(process.env.NODE_EXTRA_CA_CERTS) }))";
@@ -409,7 +441,10 @@ test('mcp: handshake, tools, run_with_secrets, http_request', async () => {
     const tools = await request('tools/list', {});
     assert.deepEqual(tools.result.tools.map((t) => t.name).sort(), ['add_key', 'allow_hosts', 'http_request', 'list_keys', 'remove_key', 'run_with_secrets']);
     const runTool = tools.result.tools.find((t) => t.name === 'run_with_secrets');
-    assert.match(runTool.description, process.platform === 'win32' ? /cmd\.exe.*%NAME%/ : /\/bin\/sh/);
+    assert.match(runTool.description, process.platform === 'win32' ? /cmd\.exe/ : /\/bin\/sh/);
+    // It states the boundary (#18) and no longer suggests %NAME% in commands (#19).
+    assert.match(runTool.description, /expanding it in the command itself .* is refused/);
+    assert.match(runTool.description, /only its OUTPUT is cleaned/);
 
     const list = await call('list_keys', {});
     assert.equal(list.text.split('\n')[0], `Vault: ${path.join(project, '.env.facedown')}`);
@@ -424,6 +459,15 @@ test('mcp: handshake, tools, run_with_secrets, http_request', async () => {
 
     const missing = await call('run_with_secrets', { command: 'echo hi', keys: ['NOT_A_KEY'] });
     assert.equal(missing.isError, true);
+
+    // A key expanded onto the command line is refused before anything runs (#19).
+    const onLine = await call('run_with_secrets', { command: 'echo %API_KEY% $API_KEY', keys: ['API_KEY'] });
+    assert.equal(onLine.isError, true);
+    assert.match(onLine.text, /refused: the command would put API_KEY .* on a command line/);
+    assert.match(onLine.text, /set proxy: true/);
+    assert.ok(!onLine.text.includes(SECRET));
+    const nameOnly = await call('run_with_secrets', { command: 'echo API_KEY is set', keys: ['API_KEY'] });
+    assert.ok(!nameOnly.isError, nameOnly.text);
 
     // The server really receives the secret; the AI only sees the mask.
     const ok = await call('http_request', {

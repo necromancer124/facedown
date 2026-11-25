@@ -60,6 +60,10 @@ These are known limits, listed in the [README](../README.md#what-it-protects-and
   value before printing it, sends it somewhere itself, or reads the unlock key
   from `~/.facedown/keys` / calls Windows DPAPI as the same user. facedown runs
   as you and cannot stop code that runs as you.
+- A program run with `run_with_secrets` or `facedown run` (without `--proxy`)
+  writing the key to a file or sending it somewhere. Only its output is
+  cleaned; the program itself has the real value. That's the documented
+  boundary, with a test that shows it.
 - Simulating clicks or key presses on the facedown windows.
 - An allowed site storing the value (for example a gist on an allowed GitHub
   API). An allowed site is trusted with the key.

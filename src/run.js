@@ -4,6 +4,51 @@ import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { createRedactor, createStreamRedactor, mergeHits } from './redact.js';
 
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Where a command would expand a key onto a command line. That puts the real
+ * value into a process's arguments, where other programs on the computer can
+ * read it (Task Manager, `ps`), and the output cleaner never sees it.
+ * Mentioning the name as plain text (`echo TOKEN is set`) is fine.
+ * Returns [{ name, how }] for each key found.
+ *
+ * Suggested by u/Deynekin on r/mcp (#19): refuse at the tool boundary, before
+ * the value is ever expanded.
+ */
+export function findKeyExpansions(command, names) {
+  const found = [];
+  for (const name of names) {
+    const n = escapeRe(name);
+    const patterns = [
+      [new RegExp(`%${n}(?::[^%]*)?%`, 'i'), `%${name}%`], // cmd.exe, also %NAME:~0,4%
+      [new RegExp(`!${n}(?::[^!]*)?!`, 'i'), `!${name}!`], // cmd.exe delayed expansion
+      [new RegExp(`\\$env:${n}(?![A-Za-z0-9_])`, 'i'), `$env:${name}`], // PowerShell
+      [new RegExp(`\\$\\{${n}(?:[}:#%/^,@-]|$)`), `\${${name}}`], // sh ${NAME}, ${NAME:-x}
+      [new RegExp(`\\$${n}(?![A-Za-z0-9_])`), `$${name}`], // sh $NAME
+    ];
+    for (const [re, how] of patterns) {
+      if (re.test(command)) {
+        found.push({ name, how });
+        break;
+      }
+    }
+  }
+  return found;
+}
+
+/** The error for findKeyExpansions hits. */
+export function keyOnCommandLineMessage(hits, { tool = false } = {}) {
+  const list = hits.map((h) => `${h.name} (${h.how})`).join(', ');
+  const proxyHint = tool ? 'or set proxy: true' : 'or add --proxy';
+  return (
+    `refused: the command would put ${list} on a command line, where other programs on this computer can ` +
+    'read it, and facedown cannot hide it there. Read the key inside your program instead ' +
+    `(process.env.NAME, os.environ["NAME"]), use http_request for web APIs, ${proxyHint} so the command ` +
+    'line only gets a placeholder.'
+  );
+}
+
 function quoteForCmd(arg) {
   if (arg !== '' && /^[A-Za-z0-9_\-./:=\\@+,]+$/.test(arg)) return arg;
   return `"${arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"`;

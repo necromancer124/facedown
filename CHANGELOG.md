@@ -7,6 +7,18 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
 
 ## [Unreleased]
 
+### Changed
+- **Breaking:** `run` and `run_with_secrets` refuse a command that expands a
+  key onto its command line (`%NAME%`, `!NAME!`, `$env:NAME`, `$NAME`,
+  `${NAME}`), because other programs on the computer can read a command line.
+  Read keys inside the program, use `http_request`, or add `--proxy`, which
+  only puts a placeholder there. Suggested by u/Deynekin (#19).
+- The README says up front what 1.0 promises (accidental leaks, not a
+  deliberate thief), and the `run_with_secrets` description says plainly that
+  only output is cleaned. A test shows the limit with a fake token: a key the
+  program writes to a file is the real value, unless `--proxy` is on.
+  Suggested by u/sparkignitefire (#18).
+
 ## [0.3.0] - 2026-11-25
 
 ### Added
