@@ -16,7 +16,8 @@ import { LEGACY_FILE_NAME, normalizeHosts } from './format.js';
 import { leakMessage } from './redact.js';
 import { describeUse, startSecretProxy } from './proxy.js';
 import { findKeyExpansions, keyOnCommandLineMessage, runCaptured } from './run.js';
-import { Vault } from './vault.js';
+import { logRun } from './uselog.js';
+import { Vault, describeAge, describeAllow } from './vault.js';
 import {
   blockInsecure,
   cachedUpdate,
@@ -222,8 +223,10 @@ export async function serveMcp() {
       if (!keys.length) return `Vault: ${file}\n${updateLine()}${legacy}The vault is empty. Call add_key to add a secret.`;
       return `Vault: ${file}\n${updateLine()}${legacy}` + keys
         .map((k) => {
-          const allow = k.allow.length ? k.allow.join(', ') : 'none (cannot be used with http_request)';
-          return `${k.name}\n  description: ${k.description || '-'}\n  allowed hosts: ${allow}`;
+          const hosts = k.allow.map((h) => (k.temporary[h] ? describeAllow([`${h}@${Date.parse(k.temporary[h]) / 1000}`]) : h));
+          const allow = hosts.length ? hosts.join(', ') : 'none (cannot be used with http_request)';
+          const set = k.set ? `\n  value set: ${describeAge(k.set)}` : '';
+          return `${k.name}\n  description: ${k.description || '-'}\n  allowed hosts: ${allow}${set}`;
         })
         .join('\n');
     },
@@ -347,6 +350,7 @@ export async function serveMcp() {
       } finally {
         await proxy?.close();
       }
+      if (!result.startError) logRun({ secrets, via: 'run_with_secrets', command, proxyUsed: proxy?.used });
       if (result.startError) throw new Error(`could not start the command: ${result.startError}`);
       const status = result.timedOut ? 'timed out (stopped)' : `exit code ${result.exitCode}`;
       const cut = result.truncated ? '\n[output cut: too long]' : '';

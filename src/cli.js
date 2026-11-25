@@ -20,8 +20,9 @@ import {
 import { MIN_REDACT_LENGTH, describeHits, leakMessage } from './redact.js';
 import { describeUse, startSecretProxy } from './proxy.js';
 import { findKeyExpansions, keyOnCommandLineMessage, runStreaming } from './run.js';
+import { formatUseLog, logRun, readUseLog } from './uselog.js';
 import { EXPORT_FORMAT, MIN_PASSPHRASE_LENGTH, decryptExport, encryptExport } from './transfer.js';
-import { MIN_VALUE_LENGTH, Vault, withLock } from './vault.js';
+import { MIN_VALUE_LENGTH, Vault, describeAge, describeAllow, withLock } from './vault.js';
 import {
   blockInsecure,
   checkForUpdate,
@@ -73,6 +74,8 @@ Usage:
                                          plain .env file into the vault and offer
                                          to delete it (--keep: don't ask)
   facedown doctor                       check the setup and say what's wrong
+  facedown log [NAME] [--limit N]       when each key was used, by which tool,
+                                         for which site (never the value)
   facedown migrate                      rename an old .aienv vault (from before
                                          the rename) to ${FILE_NAME}
   facedown mcp                          start the MCP server (for AI agents)
@@ -162,8 +165,10 @@ function cmdList(args) {
   }
   const width = Math.max(...keys.map((k) => k.name.length));
   for (const k of keys) {
-    const allow = k.allow.length ? `  [allowed: ${k.allow.join(', ')}]` : '';
-    console.log(`${k.name.padEnd(width)}  ${k.description || '-'}${allow}`);
+    const hosts = k.allow.map((h) => (k.temporary[h] ? describeAllow([`${h}@${Date.parse(k.temporary[h]) / 1000}`]) : h));
+    const allow = hosts.length ? `  [allowed: ${hosts.join(', ')}]` : '';
+    const age = k.set ? `  (set ${describeAge(k.set)})` : '';
+    console.log(`${k.name.padEnd(width)}  ${k.description || '-'}${allow}${age}`);
   }
 }
 
@@ -217,6 +222,7 @@ async function cmdRun(args) {
   }
   const { code, leaks } = result;
   process.exitCode = code;
+  logRun({ secrets, via: 'run', command: argv.join(' '), proxyUsed: proxy?.used });
   if (proxy && !quiet) {
     const sent = describeUse(proxy.used);
     console.error(sent ? `facedown: --proxy sent ${sent}.` : 'facedown: --proxy did not send any key.');
@@ -479,7 +485,9 @@ async function main() {
         try {
           const info = vault.inspect(name);
           const short = info.length < MIN_VALUE_LENGTH ? '  (short: cannot be hidden safely)' : '';
-          console.log(`${name.padEnd(width)}  ok      length ${info.length}  fingerprint ${info.fingerprint}${short}`);
+          const setAt = vault.entries.get(name)?.setAt;
+          const age = setAt ? `  set ${describeAge(setAt)}` : '';
+          console.log(`${name.padEnd(width)}  ok      length ${info.length}  fingerprint ${info.fingerprint}${age}${short}`);
         } catch (err) {
           console.log(`${name.padEnd(width)}  FAILED  ${err.message}`);
           process.exitCode = 1;
@@ -490,6 +498,17 @@ async function main() {
     case 'run':
       await cmdRun(args);
       break;
+    case 'log': {
+      const json = takeFlag(args, '--json');
+      const limitText = takeOption(args, '--limit');
+      const limit = limitText === undefined ? 30 : Number.parseInt(limitText, 10);
+      if (!Number.isInteger(limit) || limit < 1) throw new Error('--limit needs a positive number');
+      const [key, extra] = args;
+      if (extra !== undefined) throw new Error('usage: facedown log [NAME] [--limit N] [--json]');
+      const rows = readUseLog({ key, limit });
+      console.log(json ? JSON.stringify(rows, null, 2) : formatUseLog(rows));
+      break;
+    }
     case 'export':
       await cmdExport(args);
       break;

@@ -5,7 +5,8 @@
 // and the response is redacted before it is returned.
 
 import { createRedactor, mergeHits } from './redact.js';
-import { hostAllowed } from './vault.js';
+import { logUse } from './uselog.js';
+import { describeAllow, hostAllowed } from './vault.js';
 
 const PLACEHOLDER = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
@@ -37,7 +38,7 @@ export async function httpRequest(vault, { url, method = 'GET', headers = {}, bo
       const allowed = legacy
         ? 'none yet: its hosts were set by an older version, set them again'
         : allow.length
-          ? allow.join(', ')
+          ? describeAllow(allow)
           : 'no hosts yet';
       throw new Error(
         `BLOCKED: ${name} may not be sent to ${target.hostname} (allowed: ${allowed}). ` +
@@ -60,6 +61,7 @@ export async function httpRequest(vault, { url, method = 'GET', headers = {}, bo
     redirect: 'manual',
     signal: AbortSignal.timeout(timeoutMs),
   });
+  logUse([...used].map((key) => ({ key, via: 'http_request', host: target.hostname })));
 
   // Each piece is cleaned on its own; the hit counts are added up for the note.
   const counts = [];

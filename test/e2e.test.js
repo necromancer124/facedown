@@ -207,10 +207,11 @@ test('cli: --quiet drops the note; check shows length and fingerprint, never the
   r = cli(['check']);
   assert.equal(r.status, 0, r.stderr);
   const lines = r.stdout.trim().split(/\r?\n/);
-  assert.match(lines[0], new RegExp(`^API_KEY\\s+ok\\s+length ${SECRET.length}  fingerprint [0-9a-f]{8}$`));
-  assert.match(lines[1], new RegExp(`^OTHER_KEY\\s+ok\\s+length ${OTHER.length}  fingerprint [0-9a-f]{8}$`));
-  assert.notEqual(lines[0].slice(-8), lines[1].slice(-8));
-  assert.equal(cli(['check', 'API_KEY']).stdout.trim().slice(-8), lines[0].slice(-8)); // stable
+  assert.match(lines[0], new RegExp(`^API_KEY\\s+ok\\s+length ${SECRET.length}  fingerprint [0-9a-f]{8}  set today$`));
+  assert.match(lines[1], new RegExp(`^OTHER_KEY\\s+ok\\s+length ${OTHER.length}  fingerprint [0-9a-f]{8}  set today$`));
+  const fp = (line) => /fingerprint ([0-9a-f]{8})/.exec(line)[1];
+  assert.notEqual(fp(lines[0]), fp(lines[1]));
+  assert.equal(fp(cli(['check', 'API_KEY']).stdout), fp(lines[0])); // stable
   assert.ok(!r.stdout.includes(SECRET));
   assert.equal(cli(['check', 'NOT_A_KEY']).status, 1);
 });
@@ -600,4 +601,22 @@ test('mcp: handshake, tools, run_with_secrets, http_request', async () => {
     child.stdin.end();
     await new Promise((r) => child.on('close', r));
   }
+});
+
+test('cli: the use log records each use (tool, site, masked command), never the value', async () => {
+  const logFile = path.join(home, 'use-log.jsonl');
+  const before = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8').length : 0;
+  const r = cli(['run', '--keys', 'API_KEY', '--', process.execPath, '-e', "console.log('ok')"]);
+  assert.equal(r.status, 0, r.stderr);
+  const added = fs.readFileSync(logFile, 'utf8').slice(before);
+  assert.ok(!added.includes(SECRET));
+  const row = JSON.parse(added.trim().split('\n').pop());
+  assert.equal(row.key, 'API_KEY');
+  assert.equal(row.via, 'run');
+  assert.match(row.command, /console\.log\('ok'\)/);
+  const shown = cli(['log', 'API_KEY', '--limit', '1']);
+  assert.match(shown.stdout, /API_KEY {2}run {2}.*console\.log\('ok'\)/);
+  assert.equal(JSON.parse(cli(['log', '--json', '--limit', '1']).stdout)[0].key, 'API_KEY');
+  // list shows when the value was set.
+  assert.match(cli(['list']).stdout, /API_KEY .*\(set today\)/);
 });
