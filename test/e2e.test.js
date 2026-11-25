@@ -620,3 +620,13 @@ test('cli: the use log records each use (tool, site, masked command), never the 
   // list shows when the value was set.
   assert.match(cli(['list']).stdout, /API_KEY .*\(set today\)/);
 });
+
+test('cli: allow --for adds a site for a while only after a yes, and checks the time', () => {
+  let r = cli(['allow', 'API_KEY', 'temp.example', '--for', '2h']);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /Cancelled: there is no window or terminal to ask the user in/);
+  assert.doesNotMatch(cli(['list']).stdout, /temp\.example/, 'nothing changed without a yes');
+  assert.match(cli(['allow', 'API_KEY', 'x.example', '--for', 'soon']).stderr, /--for needs a time like 30m, 2h or 1d/);
+  assert.match(cli(['allow', 'API_KEY', 'x.example', '--for', '45d']).stderr, /at most 30 days/);
+  assert.match(cli(['allow', 'API_KEY', '--clear', '--for', '1h']).stderr, /cannot be used with --clear/);
+});

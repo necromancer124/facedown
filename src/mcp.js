@@ -12,7 +12,7 @@ import {
   describeKeyForPrompt,
   promptWindow,
 } from './prompt.js';
-import { LEGACY_FILE_NAME, normalizeHosts } from './format.js';
+import { LEGACY_FILE_NAME, normalizeHosts, splitRule } from './format.js';
 import { leakMessage } from './redact.js';
 import { describeUse, startSecretProxy } from './proxy.js';
 import { findKeyExpansions, keyOnCommandLineMessage, runCaptured } from './run.js';
@@ -135,6 +135,12 @@ export const TOOLS = [
         name: { type: 'string', description: 'Key name' },
         add: { type: 'array', items: { type: 'string' }, description: 'Hosts to allow, like ["api.github.com"] or ["*.example.com"]' },
         remove: { type: 'array', items: { type: 'string' }, description: 'Hosts to stop allowing' },
+        minutes: {
+          type: 'number',
+          description:
+            'Allow the `add` hosts only for this many minutes (temporary access, at most 43200 = 30 days); ' +
+            'they stop by themselves. Prefer this when a key is needed for one task.',
+        },
       },
       required: ['name'],
     },
@@ -290,18 +296,27 @@ export async function serveMcp() {
       return `Deleted ${name}.`;
     },
 
-    async allow_hosts({ name, add = [], remove = [] }) {
+    async allow_hosts({ name, add = [], remove = [], minutes }) {
       if (!Array.isArray(add) || !Array.isArray(remove)) throw new Error('add and remove must be lists of hosts');
+      if (minutes !== undefined && (typeof minutes !== 'number' || !(minutes >= 1) || minutes > 43200)) {
+        throw new Error('minutes must be a number from 1 to 43200 (30 days)');
+      }
       const vault = openVault();
       if (!vault.has(name)) throw new Error(`no key named ${name}`);
-      const removing = new Set(normalizeHosts(remove));
-      const adding = vault.newHosts(name, add);
-      const next = [...vault.trustedAllow(name).filter((h) => !removing.has(h)), ...adding];
+      const removing = new Set(normalizeHosts(remove).map((h) => splitRule(h).host));
+      const keep = (rules) => rules.filter((r) => !removing.has(splitRule(r).host));
+      // With minutes, the added hosts are allowed only for that long.
+      const next =
+        minutes === undefined
+          ? keep([...vault.trustedAllow(name), ...vault.newHosts(name, add)])
+          : keep(vault.withTemporary(name, add, minutes));
+      const adding = vault.newHosts(name, next);
 
       if (adding.length) {
         // One window at a time, shared with add_key.
+        const forText = minutes === undefined ? undefined : minutes % 60 === 0 ? `${minutes / 60} hour${minutes === 60 ? '' : 's'}` : `${minutes} minutes`;
         const turn = promptQueue.then(() =>
-          confirmNewHosts(name, adding, { description: vault.entries.get(name).description })
+          confirmNewHosts(name, adding, { description: vault.entries.get(name).description, forText })
         );
         promptQueue = turn.catch(() => {});
         let approved;
@@ -311,14 +326,14 @@ export async function serveMcp() {
           if (err instanceof PromptCancelled) return `Not changed: ${err.message}.`;
           throw err;
         }
-        if (!approved) return `Not changed: the user did not allow ${adding.join(', ')}.`;
+        if (!approved) return `Not changed: the user did not allow ${adding.map((r) => splitRule(r).host).join(', ')}.`;
       }
 
       const fresh = withKeyCache(Vault.load(vault.file));
       fresh.setAllow(name, next);
       remember(fresh);
       const now = fresh.trustedAllow(name);
-      return now.length ? `${name} may now be sent to: ${now.join(', ')}` : `${name} may not be sent to any site now.`;
+      return now.length ? `${name} may now be sent to: ${describeAllow(now)}` : `${name} may not be sent to any site now.`;
     },
 
     async run_with_secrets({ command, keys, cwd, timeout_seconds, proxy: useProxy }) {

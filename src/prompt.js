@@ -5,6 +5,8 @@
 //    window that appears on the user's screen.
 
 import { spawn } from 'node:child_process';
+import { splitRule } from './format.js';
+import { describeAllow } from './vault.js';
 
 export class PromptCancelled extends Error {
   constructor(message = 'cancelled') {
@@ -279,11 +281,14 @@ function confirmTerminal(question) {
  * On Windows this is always a window, even from a terminal, so a program that
  * types into a terminal cannot answer it.
  */
-export async function confirmNewHosts(name, hosts, { description } = {}) {
-  const title = `Allow ${name} to be sent to ${hosts.length === 1 ? hosts[0] : `${hosts.length} new sites`}?`;
+export async function confirmNewHosts(name, hosts, { description, forText } = {}) {
+  // Rules may carry an end time ("host@<seconds>"): show it as "host (until 14:30)".
+  const shown = hosts.map((h) => describeAllow([h]));
+  const target = hosts.length === 1 ? splitRule(hosts[0]).host : `${hosts.length} new sites`;
+  const title = `Allow ${name} to be sent to ${target}${forText ? ` for ${forText}` : ''}?`;
   const details = [
     description ? `${name}: ${description}` : null,
-    `New: ${hosts.join(', ')}`,
+    `New: ${shown.join(', ')}`,
     'Only allow sites you trust with this secret. If you did not ask for this, click Cancel.',
   ]
     .filter(Boolean)

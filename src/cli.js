@@ -49,6 +49,8 @@ Usage:
   facedown rm NAME                      delete a secret (asks you to confirm)
   facedown allow NAME host [host...]    set the hosts a secret may be sent to
                                          (adding a host asks you to confirm)
+  facedown allow NAME host --for 2h     allow a site for a while only (30m, 2h,
+                                         1d...); it stops by itself
   facedown allow NAME --clear           allow no hosts
   facedown check [NAME...]              test that secrets decrypt; shows length
                                          and a fingerprint, never the value
@@ -237,6 +239,22 @@ async function cmdRun(args) {
   } else if (message && !quiet) {
     console.error(message);
   }
+}
+
+/** "30m", "2h", "1d" or a number of minutes -> minutes (at most 30 days). */
+function parseDuration(text) {
+  const m = /^(\d+(?:\.\d+)?)\s*(m|min|h|d)?$/i.exec(String(text).trim());
+  if (!m) throw new Error(`--for needs a time like 30m, 2h or 1d (got "${text}")`);
+  const minutes = Number(m[1]) * ({ h: 60, d: 1440 }[(m[2] ?? 'm').toLowerCase()[0]] ?? 1);
+  if (!(minutes >= 1)) throw new Error('--for needs at least 1 minute');
+  if (minutes > 30 * 1440) throw new Error('--for can be at most 30 days; for longer, allow the site for good');
+  return minutes;
+}
+
+function describeMinutes(minutes) {
+  if (minutes % 1440 === 0) return `${minutes / 1440} day${minutes === 1440 ? '' : 's'}`;
+  if (minutes % 60 === 0) return `${minutes / 60} hour${minutes === 60 ? '' : 's'}`;
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
 }
 
 function namesForWindow(names) {
@@ -459,21 +477,30 @@ async function main() {
     }
     case 'allow': {
       const clear = takeFlag(args, '--clear');
+      const forText = takeOption(args, '--for');
       const [name, ...hosts] = args;
-      if (!name || (!clear && !hosts.length)) throw new Error('usage: facedown allow NAME host [host...]');
+      if (!name || (!clear && !hosts.length)) throw new Error('usage: facedown allow NAME host [host...] [--for 30m|2h|1d]');
+      if (clear && forText) throw new Error('--for adds sites for a while; it cannot be used with --clear');
       const vault = Vault.open();
       if (!vault.has(name)) throw new Error(`no key named ${name}`);
-      const wanted = clear ? [] : hosts.flatMap((h) => h.split(','));
+      const listed = clear ? [] : hosts.flatMap((h) => h.split(','));
+      // Without --for, the list given becomes the whole list. With --for, these
+      // sites are ADDED for that long and then stop by themselves.
+      const minutes = forText === undefined ? null : parseDuration(forText);
+      const wanted = minutes === null ? listed : vault.withTemporary(name, listed, minutes);
       const adding = vault.newHosts(name, wanted);
       if (adding.length) {
         // Adding a site always needs the user's OK, even when an AI runs this.
         if (canPromptInWindow()) console.error('A confirmation window opened on your screen.');
-        const ok = await confirmNewHosts(name, adding, { description: vault.entries.get(name).description });
-        if (!ok) throw new PromptCancelled(`${adding.join(', ')} not allowed, nothing changed`);
+        const ok = await confirmNewHosts(name, adding, {
+          description: vault.entries.get(name).description,
+          forText: minutes === null ? undefined : describeMinutes(minutes),
+        });
+        if (!ok) throw new PromptCancelled(`${adding.map((r) => r.split('@')[0]).join(', ')} not allowed, nothing changed`);
       }
       vault.setAllow(name, wanted);
       const now = vault.trustedAllow(name);
-      console.log(now.length ? `${name} may be sent to: ${now.join(', ')}` : `${name} may not be sent to any host.`);
+      console.log(now.length ? `${name} may be sent to: ${describeAllow(now)}` : `${name} may not be sent to any host.`);
       break;
     }
     case 'check': {
