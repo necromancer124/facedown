@@ -421,3 +421,14 @@ test('run_with_secrets output: cut off at the size limit never shows the start o
     assert.ok(!r.output.includes('LONGSECRETLONG'), `offset ${offset}: ${r.output}`);
   }
 });
+
+test('redact: base64 of a longer text that contains the value (Bearer, HTTP Basic) is hidden', () => {
+  const key = 'sk-proxy-test-1234567890';
+  for (const prefix of ['', 'B', 'Be', 'Bearer ', 'user:']) {
+    const encoded = Buffer.from(`${prefix}${key} and more`).toString('base64');
+    const out = createRedactor({ KEY: key }).all(`echo: ${encoded}`);
+    assert.match(out, /\*\*\*KEY:base64\*\*\*/, prefix);
+    const left = Buffer.from(out.replace(/^echo: /, '').replace(/\*\*\*KEY:base64\*\*\*/g, ''), 'base64').toString('latin1');
+    assert.ok(!left.includes(key.slice(4, 12)), `prefix "${prefix}": part of the key is still readable`);
+  }
+});

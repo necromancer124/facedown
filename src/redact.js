@@ -23,6 +23,22 @@ function variants(value) {
   add(b64, 'base64');
   add(b64.replace(/=+$/, ''), 'base64');
   add(buf.toString('base64url'), 'base64');
+  // Base64 of a longer text that CONTAINS the value ("Bearer <key>", HTTP
+  // Basic "user:<key>") encodes it differently depending on where it starts,
+  // because base64 works in 3-byte groups. For each of the 3 positions, the
+  // characters that come only from the value's own bytes are always the same:
+  // drop the first group if it mixes in earlier bytes, and the last one if it
+  // mixes in later bytes. (Found by the --proxy tests: an API echoing base64
+  // of "Bearer <key>".)
+  for (let shift = 0; shift < 3; shift++) {
+    const lead = (3 - shift) % 3; // value bytes that share a group with earlier text
+    const body = buf.subarray(lead);
+    const whole = body.length - (body.length % 3); // value bytes in complete groups
+    if (whole < 6) continue;
+    const middle = body.subarray(0, whole);
+    add(middle.toString('base64'), 'base64');
+    add(middle.toString('base64url'), 'base64');
+  }
   add(hex, 'hex');
   add(hex.toUpperCase(), 'hex');
   // URL encodings differ between languages and libraries: space as %20 or +,

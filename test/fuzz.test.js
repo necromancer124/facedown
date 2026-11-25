@@ -45,6 +45,8 @@ const ENCODINGS = {
   form: (v) => new URLSearchParams({ v }).toString().slice(2),
   quotePlus: (v) => encodeURIComponent(v).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase()).replace(/%20/g, '+'),
   uri: (v) => encodeURI(v),
+  base64Bearer: (v) => Buffer.from(`Bearer ${v}`).toString('base64'),
+  basicAuth: (v) => Buffer.from(`user:${v}`).toString('base64'),
 };
 
 function randomString(r, alphabet, lo, hi) {
