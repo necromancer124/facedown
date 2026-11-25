@@ -9,7 +9,9 @@ import {
   cleanDescription,
   normalizeHosts,
   parseVault,
+  ruleActive,
   serializeVault,
+  splitRule,
 } from './format.js';
 import { loadKey, saveKey } from './keystore.js';
 
@@ -217,13 +219,28 @@ export class Vault {
     return this.entries.has(name);
   }
 
-  /** Names, descriptions and allowed hosts. Never values. */
+  /**
+   * Names, descriptions, allowed hosts and when each value was last set.
+   * Never values. `temporary` maps a host allowed for a limited time to the
+   * moment it stops (ISO); `set` is when the value was last set, or null if
+   * unknown (keys saved before facedown recorded it).
+   */
   list() {
-    return [...this.entries.values()].map(({ name, description }) => ({
-      name,
-      description,
-      allow: this.trustedAllow(name),
-    }));
+    return [...this.entries.values()].map(({ name, description, setAt }) => {
+      const rules = this.trustedAllow(name);
+      const temporary = {};
+      for (const r of rules) {
+        const { host, until } = splitRule(r);
+        if (until !== null) temporary[host] = new Date(until * 1000).toISOString();
+      }
+      return {
+        name,
+        description,
+        allow: rules.map((r) => splitRule(r).host),
+        temporary,
+        set: setAt ?? null,
+      };
+    });
   }
 
   /** Throws if the name or hosts are not valid. Saves nothing. */
@@ -259,6 +276,7 @@ export class Vault {
         sealed: seal(this.key(), this.id, name, value, finalAllow),
         description: description !== undefined ? cleanDescription(description) : old?.description ?? '',
         allow: finalAllow,
+        setAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
       });
     });
   }
@@ -275,7 +293,7 @@ export class Vault {
    * Callers must get the user's confirmation before ADDING a host.
    */
   setAllow(name, hosts) {
-    const allow = normalizeHosts(hosts);
+    const allow = normalizeHosts(hosts).filter((r) => ruleActive(r)); // expired rules are dropped
     this._update(() => {
       const entry = this.entries.get(name);
       if (!entry) throw new Error(`no key named ${name}`);
@@ -293,13 +311,45 @@ export class Vault {
   trustedAllow(name) {
     const entry = this.entries.get(name);
     if (!entry) throw new Error(`no key named ${name}`);
-    return isLegacy(entry.sealed) ? [] : [...entry.allow];
+    // Rules whose time is up count as gone (they are dropped on the next change).
+    return isLegacy(entry.sealed) ? [] : entry.allow.filter((r) => ruleActive(r));
   }
 
-  /** Hosts in `hosts` that this key is not yet allowed to be sent to. */
+  /**
+   * Rules in `hosts` that would let this key go somewhere new: a host it may
+   * not reach now, or a longer time than it already has there.
+   */
   newHosts(name, hosts) {
-    const current = new Set(this.trustedAllow(name));
-    return normalizeHosts(hosts).filter((h) => !current.has(h));
+    const permanent = new Set();
+    const timed = new Map();
+    for (const r of this.trustedAllow(name)) {
+      const { host, until } = splitRule(r);
+      if (until === null) permanent.add(host);
+      else timed.set(host, Math.max(timed.get(host) ?? 0, until));
+    }
+    return normalizeHosts(hosts).filter((r) => {
+      const { host, until } = splitRule(r);
+      if (permanent.has(host)) return false;
+      if (until === null) return true;
+      return !(timed.get(host) >= until);
+    });
+  }
+
+  /**
+   * The full rule list after allowing `hosts` for `minutes` (temporary access).
+   * Hosts the key may already reach for good stay as they are.
+   */
+  withTemporary(name, hosts, minutes) {
+    if (!Number.isFinite(minutes) || minutes <= 0) throw new Error('the time must be a positive number of minutes');
+    const until = Math.floor(Date.now() / 1000) + Math.round(minutes * 60);
+    const wanted = normalizeHosts(hosts).map((h) => splitRule(h).host);
+    const current = this.trustedAllow(name);
+    const permanent = new Set(current.filter((r) => splitRule(r).until === null));
+    const kept = current.filter((r) => {
+      const { host, until: u } = splitRule(r);
+      return u === null || !wanted.includes(host);
+    });
+    return [...kept, ...wanted.filter((h) => !permanent.has(h)).map((h) => `${h}@${until}`)];
   }
 
   /**
@@ -325,10 +375,11 @@ export class Vault {
    */
   exportEntries() {
     const values = this.reveal();
-    return [...this.entries.values()].map(({ name, description }) => ({
+    return [...this.entries.values()].map(({ name, description, setAt }) => ({
       name,
       description,
       allow: this.trustedAllow(name),
+      setAt: setAt ?? undefined,
       value: values[name],
     }));
   }
@@ -360,6 +411,7 @@ export class Vault {
           sealed: seal(this.key(), this.id, e.name, e.value, allow),
           description: cleanDescription(e.description),
           allow,
+          setAt: typeof e.setAt === 'string' && !Number.isNaN(Date.parse(e.setAt)) ? e.setAt : new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
         });
       }
     });
@@ -380,10 +432,38 @@ export class Vault {
   }
 }
 
-/** Is this key allowed to be sent to this host? An empty list allows nothing. */
-export function hostAllowed(allow, hostname) {
+/**
+ * Is this key allowed to be sent to this host? An empty list allows nothing.
+ * A rule with an end time ("host@<unix seconds>") only counts until then.
+ */
+export function hostAllowed(allow, hostname, nowSeconds = Math.floor(Date.now() / 1000)) {
   const host = hostname.toLowerCase();
-  return allow.some((rule) =>
-    rule.startsWith('*.') ? host.endsWith(rule.slice(1)) && host.length > rule.length - 1 : host === rule
-  );
+  return allow.some((r) => {
+    if (!ruleActive(r, nowSeconds)) return false;
+    const rule = splitRule(r).host;
+    return rule.startsWith('*.') ? host.endsWith(rule.slice(1)) && host.length > rule.length - 1 : host === rule;
+  });
+}
+
+/** "api.github.com, example.com (until 14:30)" for people. */
+export function describeAllow(rules) {
+  return rules
+    .map((r) => {
+      const { host, until } = splitRule(r);
+      if (until === null) return host;
+      const end = new Date(until * 1000);
+      const sameDay = end.toDateString() === new Date().toDateString();
+      const when = sameDay
+        ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : end.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return `${host} (until ${when})`;
+    })
+    .join(', ');
+}
+
+/** "today", "3 days ago", or '' if unknown. */
+export function describeAge(iso) {
+  if (!iso) return '';
+  const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
+  return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
 }

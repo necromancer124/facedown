@@ -22,6 +22,7 @@ export function parseVault(text) {
   const vault = { id: null, entries: new Map() };
   let description = '';
   let allow = [];
+  let setAt = null;
 
   const lines = text.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
@@ -31,6 +32,7 @@ export function parseVault(text) {
     if (!line) {
       description = '';
       allow = [];
+      setAt = null;
       continue;
     }
 
@@ -44,6 +46,10 @@ export function parseVault(text) {
         description = m[1].trim();
       } else if ((m = /^@allow\s+(.*)$/.exec(comment))) {
         allow = normalizeHosts(m[1].split(/[,\s]+/));
+      } else if ((m = /^@set\s+(\S+)$/.exec(comment))) {
+        // When the value was last set. Plain information: not encrypted, and
+        // editing it by hand changes nothing about what the key may do.
+        setAt = Number.isNaN(Date.parse(m[1])) ? null : m[1];
       }
       continue;
     }
@@ -63,9 +69,10 @@ export function parseVault(text) {
           `Delete that line and add the key with "facedown set ${name}".`
       );
     }
-    vault.entries.set(name, { name, sealed, description, allow });
+    vault.entries.set(name, { name, sealed, description, allow, setAt });
     description = '';
     allow = [];
+    setAt = null;
   }
 
   if (!vault.id) throw new Error(`${FILE_NAME}: missing "# facedown vault v1 id=..." header`);
@@ -84,6 +91,7 @@ export function serializeVault(vault) {
     out.push('');
     if (e.description) out.push(`# @desc ${e.description}`);
     if (e.allow.length) out.push(`# @allow ${e.allow.join(',')}`);
+    if (e.setAt) out.push(`# @set ${e.setAt}`);
     out.push(`${e.name}=${e.sealed}`);
   }
   return out.join('\n') + '\n';
@@ -94,12 +102,26 @@ export function normalizeHosts(hosts) {
   for (const h of hosts) {
     const host = String(h).trim().toLowerCase();
     if (!host) continue;
-    if (!/^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(host)) {
+    // A rule may end in "@<unix seconds>": allowed until then (temporary access).
+    // The whole rule is part of the encryption, so the time can't be extended by hand.
+    if (!/^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?(@\d{9,11})?$/.test(host)) {
       throw new Error(`invalid host "${h}" (use a bare host like "github.com" or "*.github.com")`);
     }
     seen.add(host);
   }
   return [...seen];
+}
+
+/** "api.github.com@1764000000" -> { host: 'api.github.com', until: 1764000000 }; until is null if permanent. */
+export function splitRule(rule) {
+  const at = rule.lastIndexOf('@');
+  return at === -1 ? { host: rule, until: null } : { host: rule.slice(0, at), until: Number(rule.slice(at + 1)) };
+}
+
+/** Is this allowed-site rule still in force? */
+export function ruleActive(rule, nowSeconds = Math.floor(Date.now() / 1000)) {
+  const { until } = splitRule(rule);
+  return until === null || until > nowSeconds;
 }
 
 export function cleanDescription(text) {

@@ -53,12 +53,15 @@ test('crypto: rejects tampering, the wrong key, and a value moved to another nam
   assert.throws(() => open(key, 'v2', 'TOKEN', sealed), /cannot decrypt/);
 });
 
-test('format: round trip keeps names, notes and hosts', () => {
+test('format: round trip keeps names, notes, hosts, end times and the last-set date', () => {
   const vault = {
     id: 'abc123',
     entries: new Map([
-      ['A_KEY', { name: 'A_KEY', sealed: 'enc:v1:AAAA', description: 'first key', allow: ['a.com', '*.b.com'] }],
-      ['B_KEY', { name: 'B_KEY', sealed: 'enc:v1:BBBB', description: '', allow: [] }],
+      [
+        'A_KEY',
+        { name: 'A_KEY', sealed: 'enc:v1:AAAA', description: 'first key', allow: ['a.com', '*.b.com', 'c.com@1999999999'], setAt: '2026-11-25T10:00:00Z' },
+      ],
+      ['B_KEY', { name: 'B_KEY', sealed: 'enc:v1:BBBB', description: '', allow: [], setAt: null }],
     ]),
   };
   const again = parseVault(serializeVault(vault));
@@ -99,10 +102,15 @@ test('vault: set, list, reveal, remove; the file never contains the value', () =
   assert.ok(!text.includes('sk-live'));
 
   const reloaded = Vault.open(dir);
-  assert.deepEqual(reloaded.list(), [
-    { name: 'DB_PASSWORD', description: 'local db', allow: ['localhost'] },
-    { name: 'API_KEY', description: '', allow: [] },
-  ]);
+  const listed = reloaded.list();
+  assert.deepEqual(
+    listed.map(({ set, ...rest }) => rest),
+    [
+      { name: 'DB_PASSWORD', description: 'local db', allow: ['localhost'], temporary: {} },
+      { name: 'API_KEY', description: '', allow: [], temporary: {} },
+    ]
+  );
+  for (const k of listed) assert.ok(Math.abs(Date.now() - Date.parse(k.set)) < 60_000, 'the last-set date is recorded');
   assert.deepEqual(reloaded.reveal(), { DB_PASSWORD: 'correct horse battery', API_KEY: 'sk-live-12345' });
 
   // Replacing a value keeps its note and hosts.
@@ -431,4 +439,33 @@ test('redact: base64 of a longer text that contains the value (Bearer, HTTP Basi
     const left = Buffer.from(out.replace(/^echo: /, '').replace(/\*\*\*KEY:base64\*\*\*/g, ''), 'base64').toString('latin1');
     assert.ok(!left.includes(key.slice(4, 12)), `prefix "${prefix}": part of the key is still readable`);
   }
+});
+
+test('vault: temporary access ends by itself, and its end time cannot be extended by hand', () => {
+  const dir = tmpProject();
+  const vault = Vault.init(dir);
+  vault.set('TEMP_KEY', 'temporary-access-value-1', { allow: ['always.example'] });
+  // Allowed for 30 minutes; the permanent site stays permanent.
+  const rules = vault.withTemporary('TEMP_KEY', ['for-now.example', 'always.example'], 30);
+  assert.equal(rules.length, 2);
+  assert.ok(rules.includes('always.example'));
+  assert.match(rules.find((r) => r.startsWith('for-now')), /^for-now\.example@\d+$/);
+  assert.deepEqual(vault.newHosts('TEMP_KEY', rules), [rules.find((r) => r.startsWith('for-now'))], 'only the new site needs a yes');
+  vault.setAllow('TEMP_KEY', rules);
+  let v = Vault.open(dir);
+  assert.ok(hostAllowed(v.trustedAllow('TEMP_KEY'), 'for-now.example'));
+  assert.ok(!hostAllowed(v.trustedAllow('TEMP_KEY'), 'for-now.example', Math.floor(Date.now() / 1000) + 31 * 60), 'gone after 30 minutes');
+  assert.ok(hostAllowed(v.trustedAllow('TEMP_KEY'), 'always.example', Math.floor(Date.now() / 1000) + 31 * 60));
+  assert.ok(v.list()[0].temporary['for-now.example']);
+
+  // Moving the end time by hand breaks the key instead of extending access.
+  const text = fs.readFileSync(v.file, 'utf8');
+  fs.writeFileSync(v.file, text.replace(/for-now\.example@(\d+)/, (_m, t) => `for-now.example@${Number(t) + 86400}`));
+  assert.throws(() => Vault.open(dir).reveal(['TEMP_KEY']), /cannot decrypt/);
+  fs.writeFileSync(v.file, text);
+
+  // An expired rule is dropped on the next change, and the key keeps working.
+  v = Vault.open(dir);
+  v.entries.get('TEMP_KEY'); // still decrypts
+  assert.equal(v.reveal(['TEMP_KEY']).TEMP_KEY, 'temporary-access-value-1');
 });
