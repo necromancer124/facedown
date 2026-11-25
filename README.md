@@ -36,7 +36,7 @@ Claude:  ▶ http_request  Authorization: Bearer {{GITHUB_TOKEN}}
 **Why "facedown"?** Like a card played face down: it counts in the game, but
 nobody at the table sees what it is. The AI plays your secrets face down.
 
-> **Status: v0.2 preview. Windows for now; Linux and macOS are planned.**
+> **Status: v0.3 preview. Windows for now; Linux and macOS are planned.**
 > Needs Node 20 or newer, no other dependencies.
 
 ## How it works
@@ -284,8 +284,8 @@ Limits:
 
 - Web APIs only. A database password still has to be the real value.
 - The program has to use the standard proxy settings. Tried and working:
-  Node 24 `fetch`, Python's `urllib`, curl (also curl on Windows). Python
-  `requests` reads the same settings but hasn't been tried yet.
+  Node 24 `fetch`, Python (`requests`, including sessions, streaming and
+  chunked uploads, and `urllib`), curl (also curl on Windows).
   Node 20 and 22's built-in `fetch` ignore proxy settings.
 - Experimental: tell us what works and what doesn't
   ([#23](https://github.com/necromancer124/facedown/issues/23)).

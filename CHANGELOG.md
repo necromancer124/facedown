@@ -7,14 +7,18 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-25
+
 ### Added
 - `facedown run --proxy` and `run_with_secrets` with `proxy: true`
   (experimental): the program gets placeholders instead of keys, and a local
   proxy puts the real key only into HTTPS requests to that key's allowed sites,
   so a key on a command line or in a file is only the placeholder. Works with
-  Node 24 `fetch`, Python and curl (also on Windows). Idea from a discussion
-  with u/Deynekin on r/mcp (#23).
+  Node 24 `fetch`, Python (`requests`, `urllib`) and curl (also on Windows).
+  Idea from a discussion with u/Deynekin on r/mcp (#23).
 - README: a Thanks section for people whose ideas shaped facedown.
+- `Dockerfile` and `glama.json`, so MCP directories such as Glama can start
+  the server and list its tools, and the listing can be claimed.
 
 ### Fixed
 - Base64 of a longer text that contains a secret (`Bearer <key>`, HTTP Basic
