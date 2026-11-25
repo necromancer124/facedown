@@ -418,6 +418,34 @@ export class Vault {
   }
 
   /**
+   * Add plain values (from a .env file), all in one save. Names that already
+   * exist keep the vault's value. New keys may go to no site until allowed.
+   * Returns { added: [names], kept: [names] }.
+   */
+  addPlain(entries) {
+    for (const e of entries) Vault.check(e.name);
+    const result = { added: [], kept: [] };
+    this._update(() => {
+      const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+      for (const e of entries) {
+        if (this.entries.has(e.name)) {
+          result.kept.push(e.name);
+          continue;
+        }
+        this.entries.set(e.name, {
+          name: e.name,
+          sealed: seal(this.key(), this.id, e.name, e.value, []),
+          description: cleanDescription(e.description),
+          allow: [],
+          setAt: now,
+        });
+        result.added.push(e.name);
+      }
+    });
+    return result;
+  }
+
+  /**
    * Decrypt values. Internal use only: the result must go to a child process
    * or an outgoing request, never to anything the AI can read.
    */

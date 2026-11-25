@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { parseDotenv } from './dotenv.js';
 import { FILE_NAME, LEGACY_FILE_NAME } from './format.js';
 import { serveMcp } from './mcp.js';
 import {
@@ -8,6 +9,7 @@ import {
   askPassphrase,
   canPromptInTerminal,
   canPromptInWindow,
+  confirmAction,
   confirmDelete,
   confirmNewHosts,
   describeKeyForPrompt,
@@ -65,8 +67,10 @@ Usage:
   facedown export FILE                  copy every secret into FILE, encrypted with
                                          a passphrase you choose (to move a vault
                                          to another computer). Asks in a window.
-  facedown import FILE                  add the secrets from an export to this
-                                         folder's vault (asks for the passphrase)
+  facedown import FILE                  add the secrets from an export (asks for
+                                         the passphrase), or move the keys of a
+                                         plain .env file into the vault and offer
+                                         to delete it (--keep: don't ask)
   facedown migrate                      rename an old .aienv vault (from before
                                          the rename) to ${FILE_NAME}
   facedown mcp                          start the MCP server (for AI agents)
@@ -264,8 +268,9 @@ async function cmdExport(args) {
 }
 
 async function cmdImport(args) {
+  const keep = takeFlag(args, '--keep');
   const [file, extra] = args;
-  if (!file || extra !== undefined) throw new Error('usage: facedown import FILE');
+  if (!file || extra !== undefined) throw new Error('usage: facedown import FILE   (an export file, or a .env file)');
   const source = path.resolve(file);
   let text;
   try {
@@ -277,9 +282,9 @@ async function cmdImport(args) {
   try {
     format = JSON.parse(text)?.format;
   } catch {
-    // reported below
+    // not JSON: maybe a .env file
   }
-  if (format !== EXPORT_FORMAT) throw new Error(`${source} is not a facedown export file`);
+  if (format !== EXPORT_FORMAT) return importDotenv(source, text, { keep });
 
   if (canPromptInWindow()) console.error('A passphrase window opened on your screen.');
   const passphrase = await askPassphrase({
@@ -298,6 +303,60 @@ async function cmdImport(args) {
   for (const e of entries) {
     const hosts = e.allow?.length ? `  [allowed: ${e.allow.join(', ')}]` : '';
     console.log(`  ${e.name}${hosts}`);
+  }
+}
+
+/**
+ * `facedown import .env`: move the keys of a plain .env file into the vault.
+ * Values are never printed. Afterwards it offers (in a window, or y/N in a
+ * terminal) to delete the plain-text file; without anyone to ask, it keeps it.
+ */
+async function importDotenv(source, text, { keep }) {
+  const { entries, skipped } = parseDotenv(text);
+  if (!entries.length) {
+    throw new Error(`${source} is neither a facedown export nor a .env file with any KEY=value lines`);
+  }
+  const existed = Boolean(Vault.find());
+  const vault = Vault.openOrInit();
+  if (!existed) console.error(`Created ${vault.file}`);
+  const { added, kept } = vault.addPlain(entries);
+
+  if (added.length) console.log(`Moved ${added.length} key${added.length === 1 ? '' : 's'} into ${vault.file}: ${added.join(', ')}`);
+  if (kept.length) console.log(`Already in the vault, kept the vault's value: ${kept.join(', ')}`);
+  for (const s of skipped) console.log(`Skipped ${s.name}: ${s.why}`);
+  const short = entries.filter((e) => added.includes(e.name) && e.value.length < MIN_VALUE_LENGTH).map((e) => e.name);
+  if (short.length) {
+    console.error(`Note: ${short.join(', ')} ${short.length === 1 ? 'is' : 'are'} shorter than ${MIN_VALUE_LENGTH} characters, so hiding them in output can give them away.`);
+  }
+  if (added.length) {
+    console.log('New keys may not be sent to any site yet. Allow one with: facedown allow NAME api.example.com');
+  }
+
+  // The plain-text file still holds every value.
+  const name = path.basename(source);
+  if (keep || !added.length) {
+    if (added.length) console.log(`Kept ${name}. It still has the values in plain text: delete it once everything works.`);
+    return;
+  }
+  let remove = false;
+  try {
+    if (canPromptInWindow()) console.error('A confirmation window opened on your screen.');
+    remove = await confirmAction({
+      title: `Delete ${name}?`,
+      details:
+        `Its ${added.length} key${added.length === 1 ? ' is' : 's are'} now encrypted in ${path.basename(vault.file)}. ` +
+        `${name} still holds the values in plain text, readable by any AI or program in this folder. ` +
+        'Click Cancel to keep it for now.',
+      okText: 'Delete',
+    });
+  } catch (err) {
+    if (!(err instanceof PromptCancelled)) throw err;
+  }
+  if (remove) {
+    fs.rmSync(source);
+    console.log(`Deleted ${name}. Your program can read the keys with: facedown run --keys ${added.slice(0, 2).join(',')}${added.length > 2 ? ',...' : ''} -- <command>`);
+  } else {
+    console.log(`Kept ${name}. It still has the values in plain text: delete it once everything works.`);
   }
 }
 

@@ -302,8 +302,55 @@ test('cli: export and import only ask the user, never read the passphrase from s
 
   r = cli(['import', 'existing.txt']);
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /is not a facedown export file/);
+  assert.match(r.stderr, /is neither a facedown export nor a \.env file/);
   fs.rmSync(path.join(project, 'existing.txt'));
+});
+
+test('cli: import .env moves the keys into the vault, never prints a value, and keeps the file without a yes', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'facedown-dotenv-'));
+  const run = (args) => spawnSync(process.execPath, [CLI, ...args], { cwd: dir, env, encoding: 'utf8' });
+  const values = {
+    OPENAI_API_KEY: 'sk-dotenv-test-aaaaaaaa',
+    GITHUB_TOKEN: 'ghp_double "quoted" value',
+    MULTI: 'line one\nline two',
+    PLAIN: 'plain-value-1234',
+  };
+  fs.writeFileSync(
+    path.join(dir, '.env'),
+    [
+      '# OpenAI key for the chat feature',
+      `OPENAI_API_KEY=${values.OPENAI_API_KEY}`,
+      String.raw`export GITHUB_TOKEN="ghp_double \"quoted\" value"`,
+      'MULTI="line one',
+      'line two"',
+      `PLAIN=${values.PLAIN} # an inline comment`,
+      'EMPTY=',
+      '1BAD=nope-not-valid',
+      'PIN=1234',
+    ].join('\n')
+  );
+  let r = run(['import', '.env']);
+  assert.equal(r.status, 0, r.stderr);
+  const all = r.stdout + r.stderr;
+  for (const v of Object.values(values)) assert.ok(!all.includes(v), 'no value is ever printed');
+  assert.match(r.stdout, /Moved 5 keys into .*: OPENAI_API_KEY, GITHUB_TOKEN, MULTI, PLAIN, PIN/);
+  assert.match(r.stdout, /Skipped EMPTY: empty value/);
+  assert.match(r.stdout, /Skipped 1BAD: not a valid key name/);
+  assert.match(r.stderr, /PIN is shorter than 8 characters/);
+  // No window or terminal in the tests: the plain file is kept, and said so.
+  assert.match(r.stdout, /Kept \.env\. It still has the values in plain text/);
+  assert.ok(fs.existsSync(path.join(dir, '.env')));
+
+  // The values arrive intact (quotes, escapes, two lines), read by a program.
+  const check = `const want = ${JSON.stringify(values)}; console.log(JSON.stringify(Object.keys(want).map((k) => process.env[k] === want[k])), process.env.OPENAI_API_KEY)`;
+  r = run(['run', '--quiet', '--keys', Object.keys(values).join(','), '--', process.execPath, '-e', check]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), '[true,true,true,true] ***OPENAI_API_KEY***', 'exact values arrive, and stay hidden in output');
+
+  // The comment above a key became its description; importing again keeps the vault's values.
+  assert.match(run(['list']).stdout, /OPENAI_API_KEY\s+OpenAI key for the chat feature/);
+  r = run(['import', '.env', '--keep']);
+  assert.match(r.stdout, /Already in the vault, kept the vault's value: OPENAI_API_KEY, GITHUB_TOKEN, MULTI, PLAIN, PIN/);
 });
 
 test('vault file: tells AI agents the rules, and a hand-edited value is rejected', () => {
