@@ -1,5 +1,8 @@
 # FAQ and troubleshooting
 
+**First step for any problem:** run `facedown doctor`. It checks the whole
+setup and says what's wrong in plain words.
+
 ## Setup
 
 ### The slash commands (`/addKey`, `/keys`, …) don't show up
@@ -81,6 +84,23 @@ value that gives it away: `test` hidden inside `testing` prints
 `***NAME***ing`, and anyone can guess it. So values under 8 characters are
 refused unless you add `--allow-short` (for real short values like a PIN).
 Values under 4 characters are not hidden at all.
+
+### How do I rotate (replace) a key?
+
+facedown can't revoke a key at GitHub, OpenAI and so on; that stays at the
+provider. A short routine:
+
+1. Create a new key at the provider.
+2. `facedown set NAME` and type the new value (it replaces the old one, and
+   keeps the note and allowed sites).
+3. Revoke the old key at the provider.
+4. `facedown check NAME`: the fingerprint changed, so you know the new value
+   is in.
+
+`facedown list` shows when each value was last set ("set 94 days ago"), and
+`facedown doctor` points out keys that haven't changed in over 180 days. If a
+key might have leaked, rotate it first, then look at `facedown log NAME` to see
+where it was used.
 
 ### Should I commit `.env.facedown`?
 

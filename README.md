@@ -163,6 +163,16 @@ facedown set GITHUB_TOKEN --desc "token for the GitHub API" --allow api.github.c
 You type the value with hidden input. If there is no terminal to ask in, the
 password window opens instead.
 
+**Already have a `.env` file?** Move all its keys into the vault in one go:
+
+```bash
+facedown import .env
+```
+
+Values are never shown. The comment line above a key becomes its description.
+Afterwards facedown offers to delete the plain-text `.env` (you confirm in a
+window; `--keep` skips the question).
+
 ```bash
 facedown run -- node app.js
 ```
@@ -202,6 +212,9 @@ a fake token. With `--proxy`, the program only ever has a placeholder.)
 | `facedown allow NAME site…` | Set the allowed sites (adding one asks you first) |
 | `facedown rm NAME` | Delete a secret (asks you first) |
 | `facedown export FILE` / `import FILE` | Move a vault to another computer, with a passphrase |
+| `facedown import .env` | Move the keys of a plain `.env` file into the vault |
+| `facedown doctor` | Check the whole setup and say what's wrong |
+| `facedown log [NAME]` | When each key was used, by which tool, for which site (never the value) |
 | `facedown mcp` | Start the MCP server for AI agents |
 
 ### Debugging: printing a secret is allowed
@@ -234,6 +247,10 @@ facedown allow GITHUB_TOKEN api.github.com
 
 - `allow` sets the whole list, so name every site you want.
 - `*.github.com` covers every subdomain (not `github.com` itself).
+- `facedown allow NAME api.github.com --for 2h` allows a site for a while
+  only (`30m`, `2h`, `1d`, up to 30 days); it stops by itself. Good when a key
+  is needed for one task. The end time is part of the encryption too, so it
+  can't be extended by editing the file.
 - `facedown allow NAME --clear` removes all sites.
 - **Adding a site to a saved secret always asks you first**, in a confirmation
   window on Windows (or a y/N question in a terminal elsewhere), even when an
@@ -309,6 +326,18 @@ Limits:
 
 The idea came from a discussion with
 [u/Deynekin](https://www.reddit.com/user/Deynekin/) on r/mcp.
+
+### Something not working? Did it use my key?
+
+```bash
+facedown doctor
+```
+
+checks Node, the vault, its unlock key, that every key decrypts, a plain
+`.env` still lying around, the windows and the MCP server, and says what to
+fix. `facedown log` shows every time a key was used (which tool, which site,
+the command), and `facedown list` shows when each value was last set, so you
+can spot keys that are due for a change. The log never holds a value.
 
 ## For other AI agents (MCP server)
 

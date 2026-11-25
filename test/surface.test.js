@@ -28,12 +28,14 @@ const COMMANDS = {
   ls: [],
   rm: [],
   remove: [],
-  allow: ['--clear'],
+  allow: ['--clear', '--for'],
   check: [],
   run: ['--keys', '--all-keys', '--strict', '--quiet', '--proxy'],
   export: [],
-  import: [],
+  import: ['--keep'],
   migrate: [],
+  doctor: [],
+  log: ['--limit', '--json'],
   mcp: [],
   help: [],
 };
@@ -44,7 +46,7 @@ const TOOLS = {
   run_with_secrets: { required: ['command', 'keys'], optional: ['cwd', 'timeout_seconds', 'proxy'] },
   http_request: { required: ['url'], optional: ['method', 'headers', 'body'] },
   remove_key: { required: ['name'], optional: [] },
-  allow_hosts: { required: ['name'], optional: ['add', 'remove'] },
+  allow_hosts: { required: ['name'], optional: ['add', 'remove', 'minutes'] },
 };
 
 const SLASH_COMMANDS = ['addKey', 'keys', 'removeKey', 'allowSite', 'removeSite'];

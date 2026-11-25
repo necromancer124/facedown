@@ -27,7 +27,9 @@ NAME=enc:v2:<base64url>
 
 - The header line `# facedown vault v1 id=…` (older files say `blind-env`
   instead of `facedown`; they keep opening).
-- `# @desc` and `# @allow` lines belong to the key on the next line.
+- `# @desc`, `# @allow` and `# @set` lines belong to the key on the next line.
+  An allowed site may end in `@<unix seconds>`: allowed until then
+  (`facedown allow --for`). `# @set` is when the value was last set.
 - Values `enc:v1:` (old, allowed sites not protected) and `enc:v2:` (allowed
   sites are part of the encryption). New values are always written as the
   newest format; older ones keep opening.
@@ -49,17 +51,21 @@ NAME=enc:v2:<base64url>
 | `facedown set NAME` | `--desc`, `--allow`, `--stdin`, `--allow-short` |
 | `facedown list` (also `ls`) | `--json` |
 | `facedown rm NAME` (also `remove`) | |
-| `facedown allow NAME host…` | `--clear` |
+| `facedown allow NAME host…` | `--clear`, `--for` |
 | `facedown check [NAME…]` | |
 | `facedown run -- command` | `--keys`, `--all-keys`, `--strict`, `--quiet`, `--proxy` (experimental) |
 | `facedown export FILE` | |
-| `facedown import FILE` | |
+| `facedown import FILE` (an export, or a `.env` file) | `--keep` |
 | `facedown migrate` | |
+| `facedown doctor` | |
+| `facedown log [NAME]` | `--limit`, `--json` |
 | `facedown mcp` | |
 | `facedown help`, `--version` | |
 
-- `list --json` prints an array of `{ "name", "description", "allow" }`.
-  Fields may be added, never removed or renamed.
+- `list --json` prints an array of `{ "name", "description", "allow",
+  "temporary", "set" }`. Fields may be added, never removed or renamed.
+- `log --json` prints an array of `{ "t", "key", "via", "host"?, "command"?,
+  "count"? }`, newest first. The log is `~/.facedown/use-log.jsonl`.
 - Exit codes: `0` success, `1` error or cancelled, `97` a secret was printed
   while `--strict` (or `FACEDOWN_STRICT=1`) was on. For `run`, any other code is
   the program's own exit code.
@@ -79,7 +85,7 @@ decrypts a secret value.
 | `run_with_secrets` | **`command`**, **`keys`**, `cwd`, `timeout_seconds`, `proxy` (experimental) |
 | `http_request` | **`url`**, `method`, `headers`, `body` |
 | `remove_key` | **`name`** |
-| `allow_hosts` | **`name`**, `add`, `remove` |
+| `allow_hosts` | **`name`**, `add`, `remove`, `minutes` |
 
 Placeholders in `http_request` keep the form `{{KEY_NAME}}`. The text a tool
 returns is for the agent to read, not for a program to parse, and may be

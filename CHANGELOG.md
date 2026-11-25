@@ -7,6 +7,17 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
 
 ## [Unreleased]
 
+### Added
+- `facedown import .env` moves the keys of a plain `.env` file into the
+  vault (never printing a value) and offers to delete the plain-text file.
+- `facedown doctor` checks the whole setup and says what's wrong.
+- `facedown log` shows every use of a key (tool, site, command; never the
+  value), from `~/.facedown/use-log.jsonl`. `list`, `check` and `list_keys`
+  show when each value was last set. Suggested by u/Deynekin (#21, #22).
+- Temporary access: `facedown allow NAME host --for 2h` and `minutes` in
+  `allow_hosts` allow a site for a while only; it stops by itself, and the end
+  time is part of the encryption.
+
 ### Changed
 - **Breaking:** `run` and `run_with_secrets` refuse a command that expands a
   key onto its command line (`%NAME%`, `!NAME!`, `$env:NAME`, `$NAME`,
