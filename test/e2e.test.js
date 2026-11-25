@@ -222,6 +222,19 @@ test('cli: run with a key that does not exist fails before starting anything', (
   assert.equal(r.stdout, '');
 });
 
+test('cli: run --proxy gives the program a placeholder and a proxy, never the value', () => {
+  const code =
+    "console.log(JSON.stringify({ key: process.env.API_KEY, proxy: process.env.HTTPS_PROXY, ca: Boolean(process.env.NODE_EXTRA_CA_CERTS) }))";
+  const r = cli(['run', '--proxy', '--keys', 'API_KEY', '--', process.execPath, '-e', code]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!(r.stdout + r.stderr).includes(SECRET));
+  const seen = JSON.parse(r.stdout);
+  assert.match(seen.key, /^facedown-placeholder-API_KEY-[0-9a-f]{12}$/);
+  assert.match(seen.proxy, /^http:\/\/127\.0\.0\.1:\d+$/);
+  assert.equal(seen.ca, true);
+  assert.match(r.stderr, /--proxy did not send any key/);
+});
+
 test('cli: without a terminal, run needs --keys or --all-keys and never passes every key silently', () => {
   // The tests have no terminal, like an AI running the command.
   fs.writeFileSync(path.join(project, 'which.js'), "console.log(['API_KEY', 'OTHER_KEY'].filter((k) => process.env[k]).join(','));\n");

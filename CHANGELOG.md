@@ -7,6 +7,20 @@ is in [docs/STABILITY.md](docs/STABILITY.md).
 
 ## [Unreleased]
 
+### Added
+- `facedown run --proxy` and `run_with_secrets` with `proxy: true`
+  (experimental): the program gets placeholders instead of keys, and a local
+  proxy puts the real key only into HTTPS requests to that key's allowed sites,
+  so a key on a command line or in a file is only the placeholder. Works with
+  Node 24 `fetch`, Python and curl (also on Windows). Idea from a discussion
+  with u/Deynekin on r/mcp (#23).
+- README: a Thanks section for people whose ideas shaped facedown.
+
+### Fixed
+- Base64 of a longer text that contains a secret (`Bearer <key>`, HTTP Basic
+  `user:<key>`) is now hidden too; before, only base64 of the secret on its own
+  was. Found by the `--proxy` tests.
+
 ## [0.2.1] - 2026-11-24
 
 ### Added

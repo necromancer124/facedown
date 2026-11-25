@@ -15,6 +15,7 @@ import {
   promptWindow,
 } from './prompt.js';
 import { MIN_REDACT_LENGTH, describeHits, leakMessage } from './redact.js';
+import { describeUse, startSecretProxy } from './proxy.js';
 import { runStreaming } from './run.js';
 import { EXPORT_FORMAT, MIN_PASSPHRASE_LENGTH, decryptExport, encryptExport } from './transfer.js';
 import { MIN_VALUE_LENGTH, Vault, withLock } from './vault.js';
@@ -47,11 +48,14 @@ Usage:
   facedown allow NAME --clear           allow no hosts
   facedown check [NAME...]              test that secrets decrypt; shows length
                                          and a fingerprint, never the value
-  facedown run --keys A,B [--strict] [--quiet] -- command
+  facedown run --keys A,B [--strict] [--quiet] [--proxy] -- command
                                          run a command with secrets as env vars.
                                          --keys can be left out in a terminal
                                          (every key is passed); otherwise use
                                          --all-keys to pass every key on purpose.
+                                         --proxy (experimental): the program gets
+                                         placeholders; a local proxy puts the real
+                                         key only into requests to allowed sites.
                                          Printing a secret is fine for logs: the
                                          output shows ***NAME*** instead of the
                                          value, plus a one-line note (--quiet
@@ -168,6 +172,7 @@ async function cmdRun(args) {
   const allKeys = takeFlag(options, '--all-keys');
   const strict = takeFlag(options, '--strict') || process.env.FACEDOWN_STRICT === '1';
   const quiet = takeFlag(options, '--quiet');
+  const useProxy = takeFlag(options, '--proxy');
   if (options.length) throw new Error(`unknown option ${options[0]}`);
   if (keysText !== undefined && allKeys) throw new Error('use either --keys or --all-keys, not both');
 
@@ -184,8 +189,26 @@ async function cmdRun(args) {
     );
   }
   const secrets = vault.reveal(names);
-  const { code, leaks } = await runStreaming(argv, secrets);
+  let proxy = null;
+  if (useProxy) {
+    const allow = Object.fromEntries(Object.keys(secrets).map((n) => [n, vault.trustedAllow(n)]));
+    if (!Object.values(allow).some((hosts) => hosts.length)) {
+      console.error('facedown: none of these keys may be sent to any site, so with --proxy the program only gets placeholders.');
+    }
+    proxy = await startSecretProxy({ secrets, allow });
+  }
+  let result;
+  try {
+    result = await runStreaming(argv, secrets, { env: proxy?.env });
+  } finally {
+    await proxy?.close();
+  }
+  const { code, leaks } = result;
   process.exitCode = code;
+  if (proxy && !quiet) {
+    const sent = describeUse(proxy.used);
+    console.error(sent ? `facedown: --proxy sent ${sent}.` : 'facedown: --proxy did not send any key.');
+  }
   const message = leakMessage(leaks);
   if (message && strict) {
     console.error(

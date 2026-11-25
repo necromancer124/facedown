@@ -14,6 +14,7 @@ import {
 } from './prompt.js';
 import { LEGACY_FILE_NAME, normalizeHosts } from './format.js';
 import { leakMessage } from './redact.js';
+import { describeUse, startSecretProxy } from './proxy.js';
 import { runCaptured } from './run.js';
 import { Vault } from './vault.js';
 import {
@@ -77,6 +78,14 @@ export const TOOLS = [
         keys: { type: 'array', items: { type: 'string' }, description: 'Names of the keys the command needs' },
         cwd: { type: 'string', description: 'Folder to run in (default: the project folder)' },
         timeout_seconds: { type: 'number', description: 'Default 120' },
+        proxy: {
+          type: 'boolean',
+          description:
+            'Experimental. The command gets placeholders instead of the real keys, and a local proxy puts the real ' +
+            "key only into HTTPS requests to that key's allowed sites. Use it for programs that call web APIs " +
+            '(curl, Python requests, Node 24+ fetch): a value the program prints, writes to a file or puts on a ' +
+            'command line is then only the placeholder.',
+        },
       },
       required: ['command', 'keys'],
     },
@@ -305,7 +314,7 @@ export async function serveMcp() {
       return now.length ? `${name} may now be sent to: ${now.join(', ')}` : `${name} may not be sent to any site now.`;
     },
 
-    async run_with_secrets({ command, keys, cwd, timeout_seconds }) {
+    async run_with_secrets({ command, keys, cwd, timeout_seconds, proxy: useProxy }) {
       if (typeof command !== 'string' || !command.trim()) throw new Error('command is required');
       if (!Array.isArray(keys) || !keys.length) throw new Error('keys must list at least one key name');
       checkNotBlocked();
@@ -313,15 +322,28 @@ export async function serveMcp() {
       const secrets = vault.reveal(keys);
       remember(vault);
       const vaultDir = path.dirname(vault.file);
-      const result = await runCaptured(command, secrets, {
-        cwd: cwd ? path.resolve(vaultDir, cwd) : vaultDir,
-        timeoutMs: Math.min(Math.max(Number(timeout_seconds) || 120, 1), 3600) * 1000,
-      });
+      let proxy = null;
+      if (useProxy === true) {
+        const allow = Object.fromEntries(Object.keys(secrets).map((n) => [n, vault.trustedAllow(n)]));
+        proxy = await startSecretProxy({ secrets, allow });
+      }
+      let result;
+      try {
+        result = await runCaptured(command, secrets, {
+          cwd: cwd ? path.resolve(vaultDir, cwd) : vaultDir,
+          env: proxy?.env,
+          timeoutMs: Math.min(Math.max(Number(timeout_seconds) || 120, 1), 3600) * 1000,
+        });
+      } finally {
+        await proxy?.close();
+      }
       if (result.startError) throw new Error(`could not start the command: ${result.startError}`);
       const status = result.timedOut ? 'timed out (stopped)' : `exit code ${result.exitCode}`;
       const cut = result.truncated ? '\n[output cut: too long]' : '';
       const leak = leakMessage(result.leaks);
-      return `${leak ? `${leak}\n` : ''}${status}\n--- output ---\n${result.output}${cut}`;
+      const sent = proxy ? describeUse(proxy.used) : '';
+      const proxyNote = proxy ? `${sent ? `proxy sent ${sent}` : 'proxy did not send any key'}\n` : '';
+      return `${leak ? `${leak}\n` : ''}${proxyNote}${status}\n--- output ---\n${result.output}${cut}`;
     },
 
     async http_request(args) {

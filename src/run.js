@@ -21,11 +21,11 @@ function spawnArgv(argv, options) {
  * For the command line: output is streamed to the terminal as it arrives.
  * Resolves with { code, leaks }: the exit code and which keys the program printed.
  */
-export function runStreaming(argv, secrets, { cwd } = {}) {
+export function runStreaming(argv, secrets, { cwd, env } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawnArgv(argv, {
       cwd,
-      env: { ...process.env, ...secrets },
+      env: { ...process.env, ...(env ?? secrets) },
       stdio: ['inherit', 'pipe', 'pipe'],
     });
     const out = createStreamRedactor(secrets, (t) => process.stdout.write(t));
@@ -45,7 +45,7 @@ export function runStreaming(argv, secrets, { cwd } = {}) {
  * For the MCP server: runs a shell command and returns its (redacted) output
  * as one string, with a size cap and a timeout.
  */
-export function runCaptured(command, secrets, { cwd, timeoutMs = 120_000, maxChars = 100_000 } = {}) {
+export function runCaptured(command, secrets, { cwd, env, timeoutMs = 120_000, maxChars = 100_000 } = {}) {
   return new Promise((resolve) => {
     let output = '';
     let rawBytes = 0;
@@ -54,7 +54,7 @@ export function runCaptured(command, secrets, { cwd, timeoutMs = 120_000, maxCha
 
     const child = spawn(command, {
       cwd,
-      env: { ...process.env, ...secrets },
+      env: { ...process.env, ...(env ?? secrets) },
       shell: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,

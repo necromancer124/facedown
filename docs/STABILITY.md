@@ -51,7 +51,7 @@ NAME=enc:v2:<base64url>
 | `facedown rm NAME` (also `remove`) | |
 | `facedown allow NAME host…` | `--clear` |
 | `facedown check [NAME…]` | |
-| `facedown run -- command` | `--keys`, `--all-keys`, `--strict`, `--quiet` |
+| `facedown run -- command` | `--keys`, `--all-keys`, `--strict`, `--quiet`, `--proxy` (experimental) |
 | `facedown export FILE` | |
 | `facedown import FILE` | |
 | `facedown migrate` | |
@@ -76,7 +76,7 @@ decrypts a secret value.
 |---|---|
 | `list_keys` | none |
 | `add_key` | **`name`**, `description`, `allow` |
-| `run_with_secrets` | **`command`**, **`keys`**, `cwd`, `timeout_seconds` |
+| `run_with_secrets` | **`command`**, **`keys`**, `cwd`, `timeout_seconds`, `proxy` (experimental) |
 | `http_request` | **`url`**, `method`, `headers`, `body` |
 | `remove_key` | **`name`** |
 | `allow_hosts` | **`name`**, `add`, `remove` |

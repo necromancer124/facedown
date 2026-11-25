@@ -30,7 +30,7 @@ const COMMANDS = {
   remove: [],
   allow: ['--clear'],
   check: [],
-  run: ['--keys', '--all-keys', '--strict', '--quiet'],
+  run: ['--keys', '--all-keys', '--strict', '--quiet', '--proxy'],
   export: [],
   import: [],
   migrate: [],
@@ -41,7 +41,7 @@ const COMMANDS = {
 const TOOLS = {
   list_keys: { required: [], optional: [] },
   add_key: { required: ['name'], optional: ['description', 'allow'] },
-  run_with_secrets: { required: ['command', 'keys'], optional: ['cwd', 'timeout_seconds'] },
+  run_with_secrets: { required: ['command', 'keys'], optional: ['cwd', 'timeout_seconds', 'proxy'] },
   http_request: { required: ['url'], optional: ['method', 'headers', 'body'] },
   remove_key: { required: ['name'], optional: [] },
   allow_hosts: { required: ['name'], optional: ['add', 'remove'] },

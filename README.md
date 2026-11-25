@@ -252,6 +252,47 @@ facedown import backup.facedown
 - `import` adds to the vault in the current folder, or makes a new one. If a
   name already exists there, nothing is imported.
 
+### Programs that call web APIs: `--proxy` (experimental)
+
+Normally a program run with facedown gets the real key, so whatever it does
+with it (put it on a command line, write it to a file) is up to the program.
+With `--proxy`, the program never gets the real key at all:
+
+```bash
+facedown run --proxy --keys GITHUB_TOKEN -- node app.js
+```
+
+1. The program gets a placeholder, like `facedown-placeholder-GITHUB_TOKEN-3f9a…`.
+2. facedown starts a small proxy on your computer for the length of the run and
+   points the program at it.
+3. When the program calls a site on the key's allowed list, the proxy puts the
+   real key into that request. Replies get it turned back into the placeholder.
+4. Every other site, the command line, files and output only ever see the
+   placeholder, which is worthless.
+
+So even `curl -H "Authorization: Bearer %GITHUB_TOKEN%"` is safe: other programs
+on the computer only see the placeholder on curl's command line. The AI turns it
+on with `proxy: true` in `run_with_secrets`.
+
+How it works: to put the key into an encrypted (HTTPS) request, the proxy acts
+as a trusted middleman. facedown makes a certificate authority for that one run,
+in memory only, and tells the program to trust it; the proxy itself checks the
+real site's certificate as usual. Sites no key may go to are tunnelled
+untouched.
+
+Limits:
+
+- Web APIs only. A database password still has to be the real value.
+- The program has to use the standard proxy settings. Tried and working:
+  Node 24 `fetch`, Python's `urllib`, curl (also curl on Windows). Python
+  `requests` reads the same settings but hasn't been tried yet.
+  Node 20 and 22's built-in `fetch` ignore proxy settings.
+- Experimental: tell us what works and what doesn't
+  ([#23](https://github.com/necromancer124/facedown/issues/23)).
+
+The idea came from a discussion with
+[u/Deynekin](https://www.reddit.com/user/Deynekin/) on r/mcp.
+
 ## For other AI agents (MCP server)
 
 `facedown mcp` is a standard MCP server, so any agent that speaks MCP can use
@@ -319,6 +360,18 @@ Other limits:
 
 Found a security problem? See [SECURITY.md](SECURITY.md). Think you can get a
 secret out anyway? [Try to break it](docs/CHALLENGE.md).
+
+## Thanks
+
+People whose ideas made facedown better:
+
+- [u/Deynekin](https://www.reddit.com/user/Deynekin/): keys on a program's
+  command line ([#19](https://github.com/necromancer124/facedown/issues/19)),
+  narrower allowed sites, a use log, rotation, and the boundary design that led
+  to `--proxy` ([#23](https://github.com/necromancer124/facedown/issues/23)).
+- [u/sparkignitefire](https://www.reddit.com/user/sparkignitefire/): making the
+  `run_with_secrets` boundary concrete with a fake-token test
+  ([#18](https://github.com/necromancer124/facedown/issues/18)).
 
 ## Hall of fame
 
