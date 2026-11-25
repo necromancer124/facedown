@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { formatDoctor, runDoctor } from './doctor.js';
 import { parseDotenv } from './dotenv.js';
 import { FILE_NAME, LEGACY_FILE_NAME } from './format.js';
 import { serveMcp } from './mcp.js';
@@ -71,6 +72,7 @@ Usage:
                                          the passphrase), or move the keys of a
                                          plain .env file into the vault and offer
                                          to delete it (--keep: don't ask)
+  facedown doctor                       check the setup and say what's wrong
   facedown migrate                      rename an old .aienv vault (from before
                                          the rename) to ${FILE_NAME}
   facedown mcp                          start the MCP server (for AI agents)
@@ -497,6 +499,12 @@ async function main() {
     case 'migrate':
       cmdMigrate();
       break;
+    case 'doctor': {
+      const result = await runDoctor();
+      console.log(formatDoctor(result));
+      if (result.failed) process.exitCode = 1;
+      break;
+    }
     case 'mcp':
       await serveMcp();
       break;

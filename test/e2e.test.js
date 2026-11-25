@@ -306,6 +306,32 @@ test('cli: export and import only ask the user, never read the passphrase from s
   fs.rmSync(path.join(project, 'existing.txt'));
 });
 
+test('cli: doctor checks the setup in plain words, never shows a value, and fails on a broken key', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'facedown-doctor-'));
+  const run = (args, input) => spawnSync(process.execPath, [CLI, ...args], { cwd: dir, env, input, encoding: 'utf8', timeout: 60_000 });
+  // No vault yet: a hint, not a failure.
+  let r = run(['doctor']);
+  assert.match(r.stdout, /! No vault here/);
+  assert.match(r.stdout, /✔ MCP server starts and lists its 6 tools/);
+
+  run(['set', 'DOC_KEY', '--stdin'], 'doctor-test-value-123456');
+  fs.writeFileSync(path.join(dir, '.env'), 'LEFTOVER=plain-text-value-1\n');
+  r = run(['doctor']);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /✔ Vault: .*\(1 key\)/);
+  assert.match(r.stdout, /✔ The key decrypts/);
+  assert.match(r.stdout, /! \.env holds 1 value in plain text\. "facedown import \.env" moves them into the vault/);
+  assert.ok(!r.stdout.includes('doctor-test-value') && !r.stdout.includes('plain-text-value'));
+
+  // A key changed by hand makes doctor fail, with a pointer to the FAQ.
+  const vaultFile = path.join(dir, '.env.facedown');
+  fs.writeFileSync(vaultFile, fs.readFileSync(vaultFile, 'utf8').replace(/^(DOC_KEY=enc:v2:)(.)/m, (_m, a, c) => a + (c === 'A' ? 'B' : 'A')));
+  r = run(['doctor']);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /✖ Cannot decrypt DOC_KEY/);
+  assert.match(r.stdout, /Something needs fixing/);
+});
+
 test('cli: import .env moves the keys into the vault, never prints a value, and keeps the file without a yes', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'facedown-dotenv-'));
   const run = (args) => spawnSync(process.execPath, [CLI, ...args], { cwd: dir, env, encoding: 'utf8' });
