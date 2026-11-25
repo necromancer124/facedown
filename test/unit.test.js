@@ -46,7 +46,11 @@ test('crypto: allowed hosts are part of the seal; v1 values still open', async (
 test('crypto: rejects tampering, the wrong key, and a value moved to another name', () => {
   const key = newMasterKey();
   const sealed = seal(key, 'v1', 'TOKEN', 'hunter2');
-  const flipped = sealed.slice(0, -2) + (sealed.endsWith('A') ? 'B' : 'A') + sealed.slice(-1);
+  // Change one character in the middle of the ciphertext into a different one.
+  // (This used to check the wrong character, so about 1 run in 64 changed nothing.)
+  const at = Math.floor(sealed.length * 0.75);
+  const flipped = sealed.slice(0, at) + (sealed[at] === 'A' ? 'B' : 'A') + sealed.slice(at + 1);
+  assert.notEqual(flipped, sealed);
   assert.throws(() => open(key, 'v1', 'TOKEN', flipped), /cannot decrypt/);
   assert.throws(() => open(newMasterKey(), 'v1', 'TOKEN', sealed), /cannot decrypt/);
   assert.throws(() => open(key, 'v1', 'OTHER', sealed), /cannot decrypt/);
